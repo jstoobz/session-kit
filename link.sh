@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Session Kit installer — symlinks skills into ~/.claude/skills/
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SKILLS_DIR="${HOME}/.claude/skills"
+
+mkdir -p "$SKILLS_DIR"
+
+SKILLS=(
+  clean-sessions
+  handoff
+  index
+  park
+  persist
+  pickup
+  prompt-lab
+  rca
+  relay
+  retro
+  tldr
+)
+
+linked=0
+skipped=0
+
+for skill in "${SKILLS[@]}"; do
+  src="$SCRIPT_DIR/$skill"
+  dest="$SKILLS_DIR/$skill"
+
+  if [ ! -d "$src" ]; then
+    echo "  skip  $skill (not found in repo)"
+    ((skipped++))
+    continue
+  fi
+
+  if [ -L "$dest" ]; then
+    existing="$(readlink "$dest")"
+    if [ "$existing" = "$src" ]; then
+      echo "  ok    $skill (already linked)"
+      ((skipped++))
+      continue
+    fi
+    rm "$dest"
+  elif [ -e "$dest" ]; then
+    echo "  WARN  $skill — $dest exists and is not a symlink, skipping"
+    ((skipped++))
+    continue
+  fi
+
+  ln -s "$src" "$dest"
+  echo "  link  $skill → $dest"
+  ((linked++))
+done
+
+echo ""
+echo "Done. Linked $linked skill(s), $skipped unchanged."
+echo ""
+echo "Restart Claude Code to pick up the new skills."
