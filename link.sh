@@ -54,7 +54,37 @@ for skill in "${SKILLS[@]}"; do
   ((linked++))
 done
 
+# Link top-level reference docs
+DOCS=(session-kit.md)
+
+for doc in "${DOCS[@]}"; do
+  src="$SCRIPT_DIR/$doc"
+  dest="$SKILLS_DIR/$doc"
+
+  if [ ! -f "$src" ]; then
+    continue
+  fi
+
+  if [ -L "$dest" ]; then
+    existing="$(readlink "$dest")"
+    if [ "$existing" = "$src" ]; then
+      echo "  ok    $doc (already linked)"
+      ((skipped++))
+      continue
+    fi
+    rm "$dest"
+  elif [ -e "$dest" ]; then
+    echo "  WARN  $doc — $dest exists and is not a symlink, skipping"
+    ((skipped++))
+    continue
+  fi
+
+  ln -sf "$src" "$dest"
+  echo "  link  $doc → $dest"
+  ((linked++))
+done
+
 echo ""
-echo "Done. Linked $linked skill(s), $skipped unchanged."
+echo "Done. Linked $linked item(s), $skipped unchanged."
 echo ""
 echo "Restart Claude Code to pick up the new skills."
