@@ -16,6 +16,7 @@ SKILLS=(
   persist
   pickup
   hone
+  prime
   rca
   relay
   retro

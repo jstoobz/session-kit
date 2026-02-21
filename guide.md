@@ -2,6 +2,28 @@
 
 Workflows and composability patterns for getting the most out of Session Kit.
 
+## New Repo Onboarding
+
+Before your first real work session in a new repo, prime it:
+
+```
+/prime                          → analyzes codebase, creates expert skills + contexts
+```
+
+This creates permanent `.claude/skills/` and `.claude/commands/contexts/` files that every future session benefits from. Run it once — or `--refresh` when the codebase evolves:
+
+```
+/prime --refresh                → checks staleness, updates changed skills
+```
+
+The full onboarding flow:
+
+```
+Day 1:    /prime → expert skills created
+Day 1+:   /pickup → [work with expert skills loaded] → /park
+Months later: /prime --refresh → skills updated for architecture changes
+```
+
 ## The Park → Pickup Cycle
 
 The core loop. Park when you leave, pickup when you return.
@@ -107,6 +129,7 @@ Skills are independent — use any combination. Some natural pairings:
 
 | Scenario | Skills |
 |----------|--------|
+| New repo setup | `/prime` → `/pickup` → `/park` |
 | Solo deep dive | `/park` → `/pickup` → `/park` |
 | Team handoff | `/tldr` + `/handoff` |
 | Investigation | `/rca` + `/park` |
