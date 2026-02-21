@@ -23,6 +23,13 @@ All skills resolve the archive root at runtime: if `SESSION_KIT_ROOT` is set, us
 | `/handoff`    | `HANDOFF.md`                                                        | Teammate-facing write-up with full business context, evidence, recommendations, and links. No Claude artifacts — pure human-to-human communication.                            |
 | `/rca`        | `INVESTIGATION_SUMMARY.md`, `INVESTIGATION_CONTEXT.md`, `evidence/` | Root cause analysis package — quick-scan summary + Claude-droppable deep context + raw evidence. Designed for engineer + Claude consumption without any skill setup.           |
 
+### Project Setup
+
+| Command                | Output                                                            | Purpose                                                                                                                        |
+| ---------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `/prime`                 | `.claude/skills/*/SKILL.md`, `.claude/commands/contexts/*.md`       | "Set up this repo." Analyzes codebase architecture, creates expert skills + feature/debug context files for all future sessions. |
+| `/prime --refresh`       | _(updates existing skills)_                                        | "Things changed." Checks staleness, re-analyzes changed layers, updates skills surgically.                                      |
+
 ### Lifecycle Commands
 
 | Command                | Output                                                            | Purpose                                                                                                                        |
@@ -41,21 +48,21 @@ All skills resolve the archive root at runtime: if `SESSION_KIT_ROOT` is set, us
 ## Session Lifecycle
 
 ```
-Start                         During                        End
-  |                             |                            |
-  v                             v                            v
-/pickup                    /tldr (anytime)              /park
-  Read artifacts              Quick summary               Generates:
-  Load skills                 for sharing                   TLDR.md
-  Present briefing                                          CONTEXT_FOR_NEXT_SESSION.md
-                           /handoff (anytime)                HONE.md
-                              Full write-up               Archives to:
-                              for teammates                 ~/.stoobz/sessions/<project>/<date>/
-                                                          Updates manifest.json
-                           /persist (anytime)
-                              Save a reference            /retro (optional)
-                              artifact mid-session          Process reflection
-                              → ~/.stoobz/sessions/<project>/
+Setup                         Start                         During                        End
+  |                             |                             |                            |
+  v                             v                             v                            v
+/prime                      /pickup                    /tldr (anytime)              /park
+  Analyze codebase            Read artifacts              Quick summary               Generates:
+  Create expert skills        Load skills                 for sharing                   TLDR.md
+  Create contexts             Present briefing                                          CONTEXT_FOR_NEXT_SESSION.md
+  (run once or --refresh)                              /handoff (anytime)                HONE.md
+                                                          Full write-up               Archives to:
+                                                          for teammates                 ~/.stoobz/sessions/<project>/<date>/
+                                                                                      Updates manifest.json
+                                                       /persist (anytime)
+                                                          Save a reference            /retro (optional)
+                                                          artifact mid-session          Process reflection
+                                                          → ~/.stoobz/sessions/<project>/
 
 Later
   |
@@ -66,6 +73,14 @@ Later
 ```
 
 ## Composability Flows
+
+### New Repo Onboarding
+
+```
+First session:  /prime → creates expert skills + contexts
+Every session:  /pickup → [work with expert skills loaded] → /park
+Months later:   /prime --refresh → updates skills for architecture changes
+```
 
 ### Solo Deep Dive (investigation, profiling, architecture review)
 
@@ -179,6 +194,8 @@ Session artifacts are archived to a central location for fast indexing and cross
 
 | I want to...                            | Use                    |
 | --------------------------------------- | ---------------------- |
+| Set up expert skills for a new repo     | `/prime`               |
+| Update stale expert skills              | `/prime --refresh`     |
 | Save everything before stepping away    | `/park`                |
 | Park with a specific label              | `/park <label>`        |
 | Resume where I left off                 | `/pickup`              |

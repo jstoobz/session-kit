@@ -6,6 +6,7 @@ A composable set of [Claude Code](https://docs.anthropic.com/en/docs/claude-code
 
 Claude Code sessions are ephemeral. When you close a session, the context is gone. Session Kit gives you a lightweight system for:
 
+- **Priming repos** with expert skills and context files for productive sessions
 - **Parking sessions** with structured artifacts (summary, resume context, prompt analysis)
 - **Resuming sessions** with zero re-explanation
 - **Finding past work** across projects via a searchable index
@@ -44,6 +45,13 @@ This symlinks each skill into `~/.claude/skills/`. Restart Claude Code to pick t
 | `/persist <name> <tags>` | Save a reference artifact mid-session |
 | `/index` | Find past sessions from manifest |
 | `/index --deep <term>` | Search inside archived artifact content |
+
+### Project Setup — create permanent expert knowledge
+
+| Command | Purpose |
+|---------|---------|
+| `/prime` | Analyze repo, create expert skills + context files |
+| `/prime --refresh` | Update stale skills based on what changed |
 
 ### Maintenance
 
@@ -90,6 +98,8 @@ export SESSION_KIT_ROOT="$HOME/.sessions"
 
 | I want to... | Use |
 |--------------|-----|
+| Set up expert skills for a new repo | `/prime` |
+| Update stale expert skills | `/prime --refresh` |
 | Save everything before stepping away | `/park` |
 | Resume where I left off | `/pickup` |
 | Share a quick summary | `/tldr` |
