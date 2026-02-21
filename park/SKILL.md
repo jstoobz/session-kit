@@ -1,6 +1,6 @@
 ---
 name: park
-description: Park the current session by generating all session artifacts, archiving them to $SESSION_KIT_ROOT/sessions/<project>/<date-label>/ (default ~/.stoobz/), and updating the manifest. Use when the user says "/park", "park this session", "wrap up", "I'm done for now", "save everything", or wants to create a complete handoff package before leaving a session. Runs /tldr, /relay, and /prompt-lab in sequence, then archives. Supports --archive-system for retroactive cleanup of scattered .stoobz/ directories (with --select, --all, --dry-run, --clean flags).
+description: Park the current session by generating all session artifacts, archiving them to $SESSION_KIT_ROOT/sessions/<project>/<date-label>/ (default ~/.stoobz/), and updating the manifest. Use when the user says "/park", "park this session", "wrap up", "I'm done for now", "save everything", or wants to create a complete handoff package before leaving a session. Runs /tldr, /relay, and /hone in sequence, then archives. Supports --archive-system for retroactive cleanup of scattered .stoobz/ directories (with --select, --all, --dry-run, --clean flags).
 ---
 
 # Park Session
@@ -18,7 +18,7 @@ Generate all session artifacts, archive them to `~/.stoobz/sessions/`, and clean
 2. **Run each skill in sequence:**
    - `/tldr` → `TLDR.md` — Shareable session summary
    - `/relay` → `CONTEXT_FOR_NEXT_SESSION.md` — Resume context for next session
-   - `/prompt-lab` → `PROMPT_LAB.md` — Original + optimized prompt
+   - `/hone` → `HONE.md` — Original + optimized prompt
 
 3. **For each skill, follow its full process** including:
    - Checking for existing files (merge, don't overwrite)
@@ -47,7 +47,7 @@ Generate all session artifacts, archive them to `~/.stoobz/sessions/`, and clean
    | Copy to archive | Leave in cwd |
    |----------------|--------------|
    | `TLDR.md` | `CONTEXT_FOR_NEXT_SESSION.md` |
-   | `PROMPT_LAB.md` | |
+   | `HONE.md` | |
    | `RETRO.md` (if exists) | |
    | `HANDOFF.md` (if exists) | |
    | `INVESTIGATION_SUMMARY.md` (if exists) | |
@@ -73,7 +73,7 @@ Generate all session artifacts, archive them to `~/.stoobz/sessions/`, and clean
      "source_dir": "<absolute path to cwd>",
      "archive_path": "sessions/<project>/<YYYY-MM-DD>-<label>",
      "branch": "<git branch or null>",
-     "artifacts": ["TLDR.md", "PROMPT_LAB.md"],
+     "artifacts": ["TLDR.md", "HONE.md"],
      "tags": ["elixir", "auth"],
      "type": "session"
    }
@@ -90,7 +90,7 @@ Generate all session artifacts, archive them to `~/.stoobz/sessions/`, and clean
 Session parked and archived.
 
   Archive:  ~/.stoobz/sessions/<project>/<date-label>/
-  Artifacts archived: TLDR.md, PROMPT_LAB.md
+  Artifacts archived: TLDR.md, HONE.md
   Relay:    CONTEXT_FOR_NEXT_SESSION.md (stays in cwd)
   Tags:     elixir, phoenix, auth
 
@@ -119,7 +119,7 @@ Run `find ~ -maxdepth 4 -type d -name ".stoobz"` to find all `.stoobz/` director
 
 **Skip:** any `.stoobz/` that is under `~/.stoobz/` (already archived). Skip empty dirs.
 
-Also scan for **loose artifacts** — `TLDR.md`, `RETRO.md`, `HANDOFF.md`, `PROMPT_LAB.md`, `CONTEXT_FOR_NEXT_SESSION.md`, `INVESTIGATION_SUMMARY.md`, `INVESTIGATION_CONTEXT.md` — sitting in project roots (not inside any `.stoobz/`), not under `~/.stoobz/`.
+Also scan for **loose artifacts** — `TLDR.md`, `RETRO.md`, `HANDOFF.md`, `HONE.md`, `CONTEXT_FOR_NEXT_SESSION.md`, `INVESTIGATION_SUMMARY.md`, `INVESTIGATION_CONTEXT.md` — sitting in project roots (not inside any `.stoobz/`), not under `~/.stoobz/`.
 
 ### Step 2 — Build session units
 
@@ -151,7 +151,7 @@ Show all discovered units in a table:
 | # | Source | Files | Date | Summary |
 |---|--------|-------|------|---------|
 | 1 | ~/my-app/.stoobz/ (7 files) | PLAN.md, deployment-methods.md, +5 | 2026-02-12 | USB bundle |
-| 2 | ~/dotfiles/.stoobz/ci-pipeline/ (3 files) | TLDR.md, PROMPT_LAB.md, +1 | 2026-02-12 | Git cleanup |
+| 2 | ~/dotfiles/.stoobz/ci-pipeline/ (3 files) | TLDR.md, HONE.md, +1 | 2026-02-12 | Git cleanup |
 | 3 | ~/dotfiles/.stoobz/configs/ (5 files) | direnv, gh, +3 | 2026-02-12 | No summary |
 | 4 | ~/work/api/ (2 loose files) | TLDR.md, RETRO.md | 2026-02-08 | API rate limiting |
 ```

@@ -72,13 +72,13 @@ Teammate:   [paste INVESTIGATION_CONTEXT.md into Claude] → review → verify �
 
 `/rca` produces three things: a quick-scan summary (human-readable), a deep context doc (Claude-droppable), and an `evidence/` directory with raw artifacts.
 
-## Prompt Improvement Loop
+## Prompt Honing Loop
 
 Track how your prompts evolve:
 
 ```
-Session 1:  [work from initial prompt] → /prompt-lab
-Session 2:  [paste optimized prompt from PROMPT_LAB.md] → [work] → /prompt-lab
+Session 1:  [work from initial prompt] → /hone
+Session 2:  [paste optimized prompt from HONE.md] → [work] → /hone
             Compare: is the optimized prompt actually better?
 ```
 
@@ -110,7 +110,7 @@ Skills are independent — use any combination. Some natural pairings:
 | Solo deep dive | `/park` → `/pickup` → `/park` |
 | Team handoff | `/tldr` + `/handoff` |
 | Investigation | `/rca` + `/park` |
-| Learning | `/prompt-lab` + `/retro` |
+| Learning | `/hone` + `/retro` |
 | Reference building | `/persist` + `/index` |
 | Full ceremony | `/park` + `/retro` + `/handoff` |
 

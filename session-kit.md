@@ -18,7 +18,7 @@ All skills resolve the archive root at runtime: if `SESSION_KIT_ROOT` is set, us
 | ------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `/tldr`       | `TLDR.md`                                                           | Concise session summary for sharing with engineers. Key findings, decisions, changes, open items. 2-minute read max.                                                           |
 | `/relay`      | `CONTEXT_FOR_NEXT_SESSION.md`                                       | Everything Claude needs to resume in a new session. Optimized for machine consumption — paths, branch state, decisions, next steps, auto-detected skills to load.                            |
-| `/prompt-lab` | `PROMPT_LAB.md`                                                     | Captures your original prompt verbatim, analyzes its effectiveness, generates an optimized version, and provides coaching tips. Builds prompt engineering intuition over time. |
+| `/hone` | `HONE.md`                                                     | Captures your original prompt verbatim, analyzes its effectiveness, generates an optimized version, and provides coaching tips. Builds prompt engineering intuition over time. |
 | `/retro`      | `RETRO.md`                                                          | Session retrospective — what went well, what took longer than expected, what to do differently. Tracks recurring patterns across sessions.                                     |
 | `/handoff`    | `HANDOFF.md`                                                        | Teammate-facing write-up with full business context, evidence, recommendations, and links. No Claude artifacts — pure human-to-human communication.                            |
 | `/rca`        | `INVESTIGATION_SUMMARY.md`, `INVESTIGATION_CONTEXT.md`, `evidence/` | Root cause analysis package — quick-scan summary + Claude-droppable deep context + raw evidence. Designed for engineer + Claude consumption without any skill setup.           |
@@ -27,7 +27,7 @@ All skills resolve the archive root at runtime: if `SESSION_KIT_ROOT` is set, us
 
 | Command                | Output                                                            | Purpose                                                                                                                        |
 | ---------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `/park`                  | `TLDR.md`, `CONTEXT_FOR_NEXT_SESSION.md`, `PROMPT_LAB.md`          | "I'm stepping away." Generates all core artifacts, archives to `~/.stoobz/sessions/<project>/<date-label>/`. `CONTEXT_FOR_NEXT_SESSION.md` stays in cwd as relay baton. |
+| `/park`                  | `TLDR.md`, `CONTEXT_FOR_NEXT_SESSION.md`, `HONE.md`          | "I'm stepping away." Generates all core artifacts, archives to `~/.stoobz/sessions/<project>/<date-label>/`. `CONTEXT_FOR_NEXT_SESSION.md` stays in cwd as relay baton. |
 | `/park <label>`          | _(same as /park)_                                                  | Park with an explicit label for the archive directory (e.g., `/park PROJ-1234`).                                               |
 | `/park --archive-system` | _(scans and archives)_                                             | Retroactive cleanup — finds scattered `.stoobz/` dirs and loose artifacts, archives full subtrees to `~/.stoobz/sessions/`. Flags: `--select` (default), `--all`, `--dry-run`, `--clean`. |
 | `/retro`                 | `RETRO.md`                                                         | Session retrospective — what went well, what took longer, what to do differently. Can run anytime; `/park` archives it if present. |
@@ -48,7 +48,7 @@ Start                         During                        End
   Read artifacts              Quick summary               Generates:
   Load skills                 for sharing                   TLDR.md
   Present briefing                                          CONTEXT_FOR_NEXT_SESSION.md
-                           /handoff (anytime)                PROMPT_LAB.md
+                           /handoff (anytime)                HONE.md
                               Full write-up               Archives to:
                               for teammates                 ~/.stoobz/sessions/<project>/<date>/
                                                           Updates manifest.json
@@ -98,11 +98,11 @@ Session 1:  [investigate] → /rca       (package findings + evidence for teamma
 Teammate:   [drop INVESTIGATION_CONTEXT.md path into Claude] → review → verify → fix
 ```
 
-### Prompt Improvement Loop
+### Prompt Honing Loop
 
 ```
-Session 1:  [work from initial prompt] → /prompt-lab
-Session 2:  [paste optimized prompt from PROMPT_LAB.md] → [work] → /prompt-lab
+Session 1:  [work from initial prompt] → /hone
+Session 2:  [paste optimized prompt from HONE.md] → [work] → /hone
             Compare: is the optimized prompt actually better?
 ```
 
@@ -153,7 +153,7 @@ Session artifacts are archived to a central location for fast indexing and cross
 │   ├── my-project/
 │   │   ├── 2026-02-13-PROJ-1234/               ← /park session archive
 │   │   │   ├── TLDR.md
-│   │   │   ├── PROMPT_LAB.md
+│   │   │   ├── HONE.md
 │   │   │   └── RETRO.md
 │   │   ├── 2026-02-10-auth-token-refresh/
 │   │   │   └── ...
@@ -161,7 +161,7 @@ Session artifacts are archived to a central location for fast indexing and cross
 │   ├── session-kit-lab/
 │   │   └── 2026-02-13-archive-feature/
 │   │       ├── TLDR.md
-│   │       └── PROMPT_LAB.md
+│   │       └── HONE.md
 │   └── api-gateway/
 │       └── 2026-01-28-rate-limiting/
 │           ├── TLDR.md
@@ -185,7 +185,7 @@ Session artifacts are archived to a central location for fast indexing and cross
 | Share a quick summary                   | `/tldr`                |
 | Write up findings for the team          | `/handoff`             |
 | Save context for my next session        | `/relay`               |
-| Improve my prompting                    | `/prompt-lab`          |
+| Improve my prompting                    | `/hone`          |
 | Reflect on my process                   | `/retro`               |
 | Package an investigation for a teammate | `/rca`                 |
 | Find a past session                     | `/index`               |

@@ -1,9 +1,9 @@
 ---
-name: clean-sessions
-description: Interactive cleanup of old Claude Code sessions from the resume picker. Use when the user says "/clean-sessions", "clean up sessions", "too many sessions", "session picker is cluttered", or wants to remove old/unused sessions. Runs an interactive Python script that categorizes and selectively deletes sessions.
+name: sweep
+description: Interactive cleanup of old Claude Code sessions from the resume picker. Use when the user says "/sweep", "sweep sessions", "too many sessions", "session picker is cluttered", or wants to remove old/unused sessions. Runs an interactive Python script that categorizes and selectively deletes sessions.
 ---
 
-# Clean Sessions
+# Sweep
 
 Interactive cleanup of Claude Code sessions from the resume picker.
 
@@ -12,13 +12,13 @@ Interactive cleanup of Claude Code sessions from the resume picker.
 1. Run the cleanup script:
 
 ```bash
-python3 "$(dirname "$(readlink -f ~/.claude/skills/clean-sessions)")/scripts/clean-sessions.py"
+python3 "$(dirname "$(readlink -f ~/.claude/skills/sweep)")/scripts/sweep.py"
 ```
 
 If the above fails (e.g., no `readlink -f` on macOS), fall back to:
 
 ```bash
-python3 ~/.claude/skills/clean-sessions/scripts/clean-sessions.py
+python3 ~/.claude/skills/sweep/scripts/sweep.py
 ```
 
 2. The script will:

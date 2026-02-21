@@ -12,7 +12,7 @@ Load prior session artifacts and get up to speed instantly. The complement to `/
 1. **Scan for artifacts** in the current working directory:
    - `CONTEXT_FOR_NEXT_SESSION.md` (primary — contains full resume context)
    - `TLDR.md` (secondary — provides session summary)
-   - `PROMPT_LAB.md` (tertiary — shows original goals and optimized prompt)
+   - `HONE.md` (tertiary — shows original goals and optimized prompt)
    - `RETRO.md` (if present — shows lessons from last session)
 
 2. **Load in priority order:**

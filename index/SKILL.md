@@ -31,14 +31,14 @@ Find and catalog past sessions from the `~/.stoobz/sessions/` archive.
 | my-project | 2026-02-10 | auth-token-refresh | Token expiry investigation | T H P | elixir, phoenix |
 | api-gateway | 2026-01-28 | rate-limiting | API rate limiting | T I | go, infrastructure |
 
-**Legend:** T=TLDR C=Context R=Retro P=Prompt-Lab H=Handoff I=Investigation
+**Legend:** T=TLDR C=Context R=Retro P=Hone H=Handoff I=Investigation
 ```
 
    **Artifact abbreviations:**
    - `T` = TLDR.md
    - `C` = CONTEXT_FOR_NEXT_SESSION.md
    - `R` = RETRO.md
-   - `P` = PROMPT_LAB.md
+   - `P` = HONE.md
    - `H` = HANDOFF.md
    - `I` = INVESTIGATION_SUMMARY.md or INVESTIGATION_CONTEXT.md
 
@@ -77,7 +77,7 @@ If `~/.stoobz/manifest.json` doesn't exist:
 
 1. **Notify the user:** "No manifest found. Falling back to filesystem scan..."
 
-2. **Scan `~/.stoobz/sessions/`** for directories containing session artifacts (`TLDR.md`, `RETRO.md`, `PROMPT_LAB.md`, `HANDOFF.md`, `INVESTIGATION_SUMMARY.md`, `INVESTIGATION_CONTEXT.md`).
+2. **Scan `~/.stoobz/sessions/`** for directories containing session artifacts (`TLDR.md`, `RETRO.md`, `HONE.md`, `HANDOFF.md`, `INVESTIGATION_SUMMARY.md`, `INVESTIGATION_CONTEXT.md`).
 
 3. **For each directory found:**
    - Read the first 5 lines of `TLDR.md` (if present) for the title and date

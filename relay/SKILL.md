@@ -98,6 +98,6 @@ _Paste this document at the start of your next Claude Code session in this direc
 - **Include the "why" not just the "what"** — next session needs to understand intent, not just facts
 - **Concrete over abstract** — "check `lib/my_app/accounts/projectors/user_projector.ex` line 42" beats "look at the projector"
 - **Skip sections with no content** — don't include empty Gotchas or Decisions sections
-- **Auto-detect skills** — Scan the conversation for skill invocations (commands like `/beam-expert`, `/use-db`, etc.) and list them in Skills To Load. Exclude session-kit lifecycle skills (`/park`, `/relay`, `/tldr`, `/pickup`, `/prompt-lab`, `/retro`, `/handoff`, `/rca`, `/index`, `/persist`) — those are infrastructure, not domain context.
+- **Auto-detect skills** — Scan the conversation for skill invocations (commands like `/beam-expert`, `/use-db`, etc.) and list them in Skills To Load. Exclude session-kit lifecycle skills (`/park`, `/relay`, `/tldr`, `/pickup`, `/hone`, `/retro`, `/handoff`, `/rca`, `/index`, `/persist`) — those are infrastructure, not domain context.
 - **Skills recommendation** — always include which skills were loaded/useful so the next session can load them immediately
 - Write to `./CONTEXT_FOR_NEXT_SESSION.md` unless the user specifies a different path

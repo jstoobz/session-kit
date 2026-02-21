@@ -29,7 +29,7 @@ This symlinks each skill into `~/.claude/skills/`. Restart Claude Code to pick t
 |---------|--------|---------|
 | `/tldr` | `TLDR.md` | Concise session summary — key findings, decisions, changes |
 | `/relay` | `CONTEXT_FOR_NEXT_SESSION.md` | Everything needed to resume in a new session |
-| `/prompt-lab` | `PROMPT_LAB.md` | Original prompt + analysis + optimized version |
+| `/hone` | `HONE.md` | Original prompt + analysis + optimized version |
 | `/retro` | `RETRO.md` | Session retrospective — what went well, what to improve |
 | `/handoff` | `HANDOFF.md` | Teammate-facing write-up with full business context |
 | `/rca` | `INVESTIGATION_SUMMARY.md` + `evidence/` | Root cause analysis package for engineer + Claude consumption |
@@ -49,7 +49,7 @@ This symlinks each skill into `~/.claude/skills/`. Restart Claude Code to pick t
 
 | Command | Purpose |
 |---------|---------|
-| `/clean-sessions` | Interactive cleanup of old Claude Code sessions from the resume picker |
+| `/sweep` | Interactive cleanup of old Claude Code sessions from the resume picker |
 | `/park --archive-system` | Retroactive cleanup of scattered `.stoobz/` directories |
 
 ## Archive Structure
@@ -63,7 +63,7 @@ Session Kit archives to a central location (default `~/.stoobz/`):
     ├── my-project/
     │   ├── 2026-02-13-PROJ-1234/          ← /park session archive
     │   │   ├── TLDR.md
-    │   │   ├── PROMPT_LAB.md
+    │   │   ├── HONE.md
     │   │   └── RETRO.md
     │   └── auth-flow-notes.md             ← /persist reference artifact
     └── another-project/
@@ -95,12 +95,12 @@ export SESSION_KIT_ROOT="$HOME/.sessions"
 | Share a quick summary | `/tldr` |
 | Write up findings for the team | `/handoff` |
 | Save context for next session | `/relay` |
-| Improve my prompting | `/prompt-lab` |
+| Improve my prompting | `/hone` |
 | Reflect on my process | `/retro` |
 | Package an investigation | `/rca` |
 | Find a past session | `/index` |
 | Save a reference mid-session | `/persist` |
 | Search inside archived content | `/index --deep <term>` |
-| Clean up old sessions | `/clean-sessions` |
+| Clean up old sessions | `/sweep` |
 
 See [guide.md](guide.md) for detailed workflows and composability patterns.

@@ -9,13 +9,13 @@ SKILLS_DIR="${HOME}/.claude/skills"
 mkdir -p "$SKILLS_DIR"
 
 SKILLS=(
-  clean-sessions
+  sweep
   handoff
   index
   park
   persist
   pickup
-  prompt-lab
+  hone
   rca
   relay
   retro

@@ -6,7 +6,7 @@ Scans session indexes, presents cleanup candidates, and deletes
 selected sessions (both index entries and .jsonl files).
 
 Usage:
-    python3 clean-sessions.py [--project PATH] [--dry-run] [--max-age DAYS] [--min-messages N]
+    python3 sweep.py [--project PATH] [--dry-run] [--max-age DAYS] [--min-messages N]
 """
 
 import json
