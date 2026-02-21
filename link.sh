@@ -31,7 +31,7 @@ for skill in "${SKILLS[@]}"; do
 
   if [ ! -d "$src" ]; then
     echo "  skip  $skill (not found in repo)"
-    ((skipped++))
+    skipped=$((skipped + 1))
     continue
   fi
 
@@ -39,19 +39,19 @@ for skill in "${SKILLS[@]}"; do
     existing="$(readlink "$dest")"
     if [ "$existing" = "$src" ]; then
       echo "  ok    $skill (already linked)"
-      ((skipped++))
+      skipped=$((skipped + 1))
       continue
     fi
     rm "$dest"
   elif [ -e "$dest" ]; then
     echo "  WARN  $skill — $dest exists and is not a symlink, skipping"
-    ((skipped++))
+    skipped=$((skipped + 1))
     continue
   fi
 
   ln -s "$src" "$dest"
   echo "  link  $skill → $dest"
-  ((linked++))
+  linked=$((linked + 1))
 done
 
 # Link top-level reference docs
@@ -69,19 +69,19 @@ for doc in "${DOCS[@]}"; do
     existing="$(readlink "$dest")"
     if [ "$existing" = "$src" ]; then
       echo "  ok    $doc (already linked)"
-      ((skipped++))
+      skipped=$((skipped + 1))
       continue
     fi
     rm "$dest"
   elif [ -e "$dest" ]; then
     echo "  WARN  $doc — $dest exists and is not a symlink, skipping"
-    ((skipped++))
+    skipped=$((skipped + 1))
     continue
   fi
 
   ln -sf "$src" "$dest"
   echo "  link  $doc → $dest"
-  ((linked++))
+  linked=$((linked + 1))
 done
 
 echo ""
