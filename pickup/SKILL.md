@@ -9,16 +9,16 @@ Load prior session artifacts and get up to speed instantly. The complement to `/
 
 ## Process
 
-1. **Scan for artifacts** in the current working directory:
-   - `CONTEXT_FOR_NEXT_SESSION.md` (primary — contains full resume context)
-   - `TLDR.md` (secondary — provides session summary)
-   - `HONE.md` (tertiary — shows original goals and optimized prompt)
-   - `RETRO.md` (if present — shows lessons from last session)
+1. **Scan for artifacts** in `./.stoobz/`:
+   - `.stoobz/CONTEXT_FOR_NEXT_SESSION.md` (primary — contains full resume context)
+   - `.stoobz/TLDR.md` (secondary — provides session summary)
+   - `.stoobz/HONE.md` (tertiary — shows original goals and optimized prompt)
+   - `.stoobz/RETRO.md` (if present — shows lessons from last session)
 
 2. **Load in priority order:**
-   - Read `CONTEXT_FOR_NEXT_SESSION.md` first — this has everything needed
-   - If missing, fall back to `TLDR.md` for at least a summary
-   - If neither exists, tell the user: "No session artifacts found in {cwd}. Starting fresh."
+   - Read `.stoobz/CONTEXT_FOR_NEXT_SESSION.md` first — this has everything needed
+   - If missing, fall back to `.stoobz/TLDR.md` for at least a summary
+   - If neither exists, tell the user: "No session artifacts found in `./.stoobz/`. Starting fresh."
 
 3. **Load recommended skills** — If the relay doc lists skills under "Skills To Load", invoke them.
 

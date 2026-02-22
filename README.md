@@ -28,12 +28,12 @@ This symlinks each skill into `~/.claude/skills/`. Restart Claude Code to pick t
 
 | Command | Output | Purpose |
 |---------|--------|---------|
-| `/tldr` | `TLDR.md` | Concise session summary — key findings, decisions, changes |
-| `/relay` | `CONTEXT_FOR_NEXT_SESSION.md` | Everything needed to resume in a new session |
-| `/hone` | `HONE.md` | Original prompt + analysis + optimized version |
-| `/retro` | `RETRO.md` | Session retrospective — what went well, what to improve |
-| `/handoff` | `HANDOFF.md` | Teammate-facing write-up with full business context |
-| `/rca` | `INVESTIGATION_SUMMARY.md` + `evidence/` | Root cause analysis package for engineer + Claude consumption |
+| `/tldr` | `.stoobz/TLDR.md` | Concise session summary — key findings, decisions, changes |
+| `/relay` | `.stoobz/CONTEXT_FOR_NEXT_SESSION.md` | Everything needed to resume in a new session |
+| `/hone` | `.stoobz/HONE.md` | Original prompt + analysis + optimized version |
+| `/retro` | `.stoobz/RETRO.md` | Session retrospective — what went well, what to improve |
+| `/handoff` | `.stoobz/HANDOFF.md` | Teammate-facing write-up with full business context |
+| `/rca` | `.stoobz/INVESTIGATION_SUMMARY.md` + `.stoobz/evidence/` | Root cause analysis package for engineer + Claude consumption |
 
 ### Lifecycle — manage session flow
 
@@ -42,7 +42,7 @@ This symlinks each skill into `~/.claude/skills/`. Restart Claude Code to pick t
 | `/park` | End session — generate artifacts, archive, update manifest |
 | `/park <label>` | Park with explicit archive label (e.g., `/park PROJ-1234`) |
 | `/pickup` | Start session — load prior context, present briefing |
-| `/persist <name> <tags>` | Save a reference artifact mid-session |
+| `/persist <name> <tags>` | Save a reference artifact mid-session to `.stoobz/` |
 | `/index` | Find past sessions from manifest |
 | `/index --deep <term>` | Search inside archived artifact content |
 
@@ -80,7 +80,7 @@ Session Kit archives to a central location (default `~/.stoobz/`):
             └── INVESTIGATION_SUMMARY.md
 ```
 
-`CONTEXT_FOR_NEXT_SESSION.md` stays in the working directory as the relay baton for `/pickup`.
+All artifacts are written to `./.stoobz/` during a session. `/park` archives them to `~/.stoobz/sessions/` and leaves only `.stoobz/CONTEXT_FOR_NEXT_SESSION.md` as the relay baton for `/pickup`.
 
 ## Configuration
 

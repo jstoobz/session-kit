@@ -34,7 +34,7 @@ Session 2:  /pickup → [continue] → /park
 Session 3:  /pickup → [wrap up] → /park + /retro
 ```
 
-`/park` generates three artifacts (TLDR, relay context, prompt analysis), archives them to `~/.stoobz/sessions/`, and leaves `CONTEXT_FOR_NEXT_SESSION.md` in cwd. `/pickup` reads that file and presents a briefing so you can jump right back in.
+`/park` generates three artifacts (TLDR, relay context, prompt analysis) in `./.stoobz/`, archives them to `~/.stoobz/sessions/`, and leaves `.stoobz/CONTEXT_FOR_NEXT_SESSION.md` as the relay baton. `/pickup` reads that file and presents a briefing so you can jump right back in.
 
 ## Ticket Work
 
@@ -69,7 +69,7 @@ Use `/persist` to save reference artifacts without ending your session:
 [continue working]           → /persist api-runbook playbook deployment
 ```
 
-Persisted artifacts land in `~/.stoobz/sessions/<project>/` and are immediately discoverable via `/index`.
+Persisted artifacts land in `./.stoobz/` during the session and are archived to `~/.stoobz/sessions/<project>/` when you `/park`.
 
 ## Finding Past Work
 
@@ -143,4 +143,4 @@ Skills are independent — use any combination. Some natural pairings:
 - **Labels help** — `/park fix-auth-bug` is easier to find than auto-generated labels.
 - **Tags are automatic** — `/park` and `/persist` auto-detect tags from content. Override with explicit tags on `/persist` when the auto-detection misses.
 - **Restart after skill edits** — Skill content is cached when Claude Code starts. Edit a SKILL.md → restart to pick it up.
-- **`CONTEXT_FOR_NEXT_SESSION.md` stays in cwd** — This is intentional. It's the relay baton. Don't move it.
+- **`.stoobz/CONTEXT_FOR_NEXT_SESSION.md` stays in `.stoobz/`** — This is intentional. It's the relay baton. Don't move it.

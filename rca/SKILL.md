@@ -17,10 +17,10 @@ Package an investigation into artifacts that let a teammate and their Claude pic
 
 ## Process
 
-1. **Create `evidence/` directory** — Persist raw artifacts from the session. Organize logically:
+1. **Create `.stoobz/evidence/` directory** — Persist raw artifacts from the session. Organize logically:
 
    ```
-   evidence/
+   .stoobz/evidence/
    ├── 01-initial-symptoms/     # What we observed that triggered the investigation
    ├── 02-hypothesis-testing/   # Queries, logs, metrics for each hypothesis
    ├── 03-root-cause/           # The evidence that confirmed/supports the finding
@@ -29,9 +29,9 @@ Package an investigation into artifacts that let a teammate and their Claude pic
 
    Name files descriptively: `slow-checkout-query-plan.md`, `cpu-spike-grafana-mar12.png`, `deadlock-thread-dump.txt`. Include timestamps where relevant. Skip numbered directories that have no content — only create directories with actual evidence.
 
-2. **Write `INVESTIGATION_SUMMARY.md`** — Human-first, quick scan format.
+2. **Write `.stoobz/INVESTIGATION_SUMMARY.md`** — Human-first, quick scan format.
 
-3. **Write `INVESTIGATION_CONTEXT.md`** — The crown jewel. Self-contained, no skill dependencies. Another engineer drops the path to this file into their Claude and it just works.
+3. **Write `.stoobz/INVESTIGATION_CONTEXT.md`** — The crown jewel. Self-contained, no skill dependencies. Another engineer drops the path to this file into their Claude and it just works.
 
 4. **Confirm outputs and offer adjustments.**
 
@@ -197,7 +197,7 @@ why they were deprioritized and what investigating them would look like.}
 
 ---
 
-_Investigation context generated {date}. Evidence artifacts in `./evidence/`._
+_Investigation context generated {date}. Evidence artifacts in `./.stoobz/evidence/`._
 _Original investigation conducted by {user} in a Claude Code session._
 ```
 
@@ -211,4 +211,4 @@ _Original investigation conducted by {user} in a Claude Code session._
 - **Descriptive file names** — `evidence/oban-job-queue-depth-feb6.md` not `evidence/data1.txt`
 - **Skip empty sections** — If nothing was ruled out, omit "Explored and Ruled Out." If nothing is still being investigated, omit that section.
 - **Tell the recipient about their own persistence** — The preamble should note that their Claude session can create `INVESTIGATION_REVIEW/` alongside evidence/ to persist their own analysis. This is mentioned in the preamble's Claude instructions.
-- Write to the current working directory unless the user specifies a different path
+- Write to `./.stoobz/` in the current working directory unless the user specifies a different path

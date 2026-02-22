@@ -9,7 +9,7 @@ Generate a `HANDOFF.md` for sharing with teammates who need full context on what
 
 ## Process
 
-1. **Check for existing file** — Read `./HANDOFF.md` if it exists. If found:
+1. **Check for existing file** — Read `./.stoobz/HANDOFF.md` if it exists. If found:
    - Preserve previous versions under a `## Previous Handoff` heading
    - Add new content as the primary section
 
@@ -26,7 +26,7 @@ Generate a `HANDOFF.md` for sharing with teammates who need full context on what
    - Need enough context to take over or review the work
    - Don't need to know about Claude skills, prompt iterations, or session mechanics
 
-4. Write `HANDOFF.md` in the current working directory.
+4. Write `.stoobz/HANDOFF.md` in the current working directory.
 
 ## Output Format
 
@@ -88,4 +88,4 @@ _Handoff generated {date} — reach out to {author} for questions._
 - **Actionable recommendations** — Each recommendation should have enough context that someone can act on it without asking follow-up questions.
 - **Link everything** — Jira tickets, PRs, dashboards, relevant files. Make it easy to dig deeper.
 - **Skip sections with no content** — Don't include empty Risks or References sections.
-- Write to `./HANDOFF.md` unless the user specifies a different path
+- Write to `./.stoobz/HANDOFF.md` unless the user specifies a different path

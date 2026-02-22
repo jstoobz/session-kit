@@ -9,7 +9,7 @@ Generate a `CONTEXT_FOR_NEXT_SESSION.md` that enables a new Claude session to re
 
 ## Process
 
-1. **Check for existing file** — Read `./CONTEXT_FOR_NEXT_SESSION.md` if it exists. If found:
+1. **Check for existing file** — Read `./.stoobz/CONTEXT_FOR_NEXT_SESSION.md` if it exists. If found:
    - Preserve previous context under a `## Previous Session Context` heading
    - Add new content as the primary (top) section with updated timestamp
    - Merge open items: check off completed ones, carry forward remaining
@@ -28,7 +28,7 @@ Generate a `CONTEXT_FOR_NEXT_SESSION.md` that enables a new Claude session to re
    - Known issues, blockers, or gotchas discovered
    - Suggested next actions in priority order
 
-4. Write `CONTEXT_FOR_NEXT_SESSION.md` in the current working directory.
+4. Write `.stoobz/CONTEXT_FOR_NEXT_SESSION.md` in the current working directory.
 
 5. Confirm the file path.
 
@@ -98,6 +98,6 @@ _Paste this document at the start of your next Claude Code session in this direc
 - **Include the "why" not just the "what"** — next session needs to understand intent, not just facts
 - **Concrete over abstract** — "check `lib/my_app/accounts/projectors/user_projector.ex` line 42" beats "look at the projector"
 - **Skip sections with no content** — don't include empty Gotchas or Decisions sections
-- **Auto-detect skills** — Scan the conversation for skill invocations (commands like `/beam-expert`, `/use-db`, etc.) and list them in Skills To Load. Exclude session-kit lifecycle skills (`/park`, `/relay`, `/tldr`, `/pickup`, `/hone`, `/retro`, `/handoff`, `/rca`, `/index`, `/persist`) — those are infrastructure, not domain context.
+- **Auto-detect skills** — Scan the conversation for skill invocations (commands like `/beam-expert`, `/use-db`, etc.) and list them in Skills To Load. Exclude session-kit lifecycle skills (`/park`, `/relay`, `/tldr`, `/pickup`, `/hone`, `/retro`, `/handoff`, `/rca`, `/index`, `/persist`, `/sweep`, `/prime`) — those are infrastructure, not domain context.
 - **Skills recommendation** — always include which skills were loaded/useful so the next session can load them immediately
-- Write to `./CONTEXT_FOR_NEXT_SESSION.md` unless the user specifies a different path
+- Write to `./.stoobz/CONTEXT_FOR_NEXT_SESSION.md` unless the user specifies a different path

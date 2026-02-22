@@ -16,9 +16,9 @@ Generate all session artifacts, archive them to `~/.stoobz/sessions/`, and clean
 1. **Announce** — Tell the user: "Parking this session. Generating artifacts..."
 
 2. **Run each skill in sequence:**
-   - `/tldr` → `TLDR.md` — Shareable session summary
-   - `/relay` → `CONTEXT_FOR_NEXT_SESSION.md` — Resume context for next session
-   - `/hone` → `HONE.md` — Original + optimized prompt
+   - `/tldr` → `.stoobz/TLDR.md` — Shareable session summary
+   - `/relay` → `.stoobz/CONTEXT_FOR_NEXT_SESSION.md` — Resume context for next session
+   - `/hone` → `.stoobz/HONE.md` — Original + optimized prompt
 
 3. **For each skill, follow its full process** including:
    - Checking for existing files (merge, don't overwrite)
@@ -44,17 +44,18 @@ Generate all session artifacts, archive them to `~/.stoobz/sessions/`, and clean
 
 7. **Copy artifacts to archive:**
 
-   | Copy to archive | Leave in cwd |
-   |----------------|--------------|
-   | `TLDR.md` | `CONTEXT_FOR_NEXT_SESSION.md` |
-   | `HONE.md` | |
-   | `RETRO.md` (if exists) | |
-   | `HANDOFF.md` (if exists) | |
-   | `INVESTIGATION_SUMMARY.md` (if exists) | |
-   | `INVESTIGATION_CONTEXT.md` (if exists) | |
-   | `evidence/` (if exists, `cp -r`) | |
+   | Source (`./.stoobz/`) | Copy to archive | Stays in `./.stoobz/` |
+   |----------------------|----------------|----------------------|
+   | `TLDR.md` | Yes | No |
+   | `CONTEXT_FOR_NEXT_SESSION.md` | Yes (duplicate) | Yes (relay baton) |
+   | `HONE.md` | Yes | No |
+   | `RETRO.md` (if exists) | Yes | No |
+   | `HANDOFF.md` (if exists) | Yes | No |
+   | `INVESTIGATION_SUMMARY.md` (if exists) | Yes | No |
+   | `INVESTIGATION_CONTEXT.md` (if exists) | Yes | No |
+   | `evidence/` (if exists, `cp -r`) | Yes | No |
 
-8. **Clean up cwd** — Remove the copied artifacts from cwd (not `CONTEXT_FOR_NEXT_SESSION.md` — it stays as the relay baton for `/pickup`).
+8. **Clean up `./.stoobz/`** — Remove all artifacts from `./.stoobz/` **except** `CONTEXT_FOR_NEXT_SESSION.md` (relay baton stays for `/pickup`). Don't remove the `./.stoobz/` directory itself.
 
 9. **Update manifest** — Read-modify-write `~/.stoobz/manifest.json`:
    - If file doesn't exist, create it with `{"sessions": []}`
@@ -90,8 +91,8 @@ Generate all session artifacts, archive them to `~/.stoobz/sessions/`, and clean
 Session parked and archived.
 
   Archive:  ~/.stoobz/sessions/<project>/<date-label>/
-  Artifacts archived: TLDR.md, HONE.md
-  Relay:    CONTEXT_FOR_NEXT_SESSION.md (stays in cwd)
+  Artifacts archived: TLDR.md, HONE.md, CONTEXT_FOR_NEXT_SESSION.md
+  Relay:    .stoobz/CONTEXT_FOR_NEXT_SESSION.md (stays in .stoobz/)
   Tags:     elixir, phoenix, auth
 
   Run /pickup in this directory to resume.
@@ -119,7 +120,7 @@ Run `find ~ -maxdepth 4 -type d -name ".stoobz"` to find all `.stoobz/` director
 
 **Skip:** any `.stoobz/` that is under `~/.stoobz/` (already archived). Skip empty dirs.
 
-Also scan for **loose artifacts** — `TLDR.md`, `RETRO.md`, `HANDOFF.md`, `HONE.md`, `CONTEXT_FOR_NEXT_SESSION.md`, `INVESTIGATION_SUMMARY.md`, `INVESTIGATION_CONTEXT.md` — sitting in project roots (not inside any `.stoobz/`), not under `~/.stoobz/`.
+Also scan for **loose artifacts** — `TLDR.md`, `RETRO.md`, `HANDOFF.md`, `HONE.md`, `CONTEXT_FOR_NEXT_SESSION.md`, `INVESTIGATION_SUMMARY.md`, `INVESTIGATION_CONTEXT.md` — sitting in project roots (not inside any `.stoobz/`), not under `~/.stoobz/`. These are legacy artifacts from before the `.stoobz/` convention.
 
 ### Step 2 — Build session units
 
@@ -205,6 +206,6 @@ Archive system complete.
 - **Respect existing files** — Each skill handles its own file existence check.
 - **Don't re-explain** — Just execute. The user wants results, not descriptions.
 - **No questions** — Generate all three without asking. Use best judgment for content.
-- **CONTEXT_FOR_NEXT_SESSION.md never moves** (normal mode) — It stays in cwd as the relay baton for `/pickup`. In `--archive-system` mode, it gets archived too (old sessions nobody is picking up).
+- **CONTEXT_FOR_NEXT_SESSION.md is duplicated** (normal mode) — Copied to archive for completeness AND stays in `./.stoobz/` as the relay baton for `/pickup`. In `--archive-system` mode, it gets archived too (old sessions nobody is picking up).
 - **Manifest is append-only** — Never remove entries, only add or update in place.
 - **Idempotent** — Re-parking the same session updates the existing archive entry rather than creating duplicates.

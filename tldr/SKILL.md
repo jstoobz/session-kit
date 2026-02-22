@@ -9,7 +9,7 @@ Generate a `TLDR.md` file summarizing the current session for sharing with other
 
 ## Process
 
-1. **Check for existing file** — Read `./TLDR.md` if it exists. If found:
+1. **Check for existing file** — Read `./.stoobz/TLDR.md` if it exists. If found:
    - Preserve previous content under a `## Previous Session` heading
    - Add new content as the primary (top) section with updated timestamp
    - This creates a rolling history — latest session first
@@ -21,7 +21,7 @@ Generate a `TLDR.md` file summarizing the current session for sharing with other
    - **Actions taken** — code changes, config updates, commands run
    - **Open items** — unresolved questions, next steps, follow-ups
 
-3. Write `TLDR.md` in the current working directory using the format below.
+3. Write `.stoobz/TLDR.md` in the current working directory using the format below.
 
 4. Confirm the file path and offer to adjust if needed.
 
@@ -73,4 +73,4 @@ _Generated from Claude Code session — see full conversation for details._
 - **Skip sections with no content** — if no decisions were made, omit the Decisions table
 - **No jargon expansion** — engineers reading this know the stack; don't explain what Oban or Ecto are
 - **One file, flat structure** — no subdirectories, no companion files
-- Write to `./TLDR.md` in the current working directory unless the user specifies a different path
+- Write to `./.stoobz/TLDR.md` in the current working directory unless the user specifies a different path

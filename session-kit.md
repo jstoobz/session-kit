@@ -16,12 +16,12 @@ All skills resolve the archive root at runtime: if `SESSION_KIT_ROOT` is set, us
 
 | Command       | Output                                                              | Purpose                                                                                                                                                                        |
 | ------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `/tldr`       | `TLDR.md`                                                           | Concise session summary for sharing with engineers. Key findings, decisions, changes, open items. 2-minute read max.                                                           |
-| `/relay`      | `CONTEXT_FOR_NEXT_SESSION.md`                                       | Everything Claude needs to resume in a new session. Optimized for machine consumption — paths, branch state, decisions, next steps, auto-detected skills to load.                            |
-| `/hone` | `HONE.md`                                                     | Captures your original prompt verbatim, analyzes its effectiveness, generates an optimized version, and provides coaching tips. Builds prompt engineering intuition over time. |
-| `/retro`      | `RETRO.md`                                                          | Session retrospective — what went well, what took longer than expected, what to do differently. Tracks recurring patterns across sessions.                                     |
-| `/handoff`    | `HANDOFF.md`                                                        | Teammate-facing write-up with full business context, evidence, recommendations, and links. No Claude artifacts — pure human-to-human communication.                            |
-| `/rca`        | `INVESTIGATION_SUMMARY.md`, `INVESTIGATION_CONTEXT.md`, `evidence/` | Root cause analysis package — quick-scan summary + Claude-droppable deep context + raw evidence. Designed for engineer + Claude consumption without any skill setup.           |
+| `/tldr`       | `.stoobz/TLDR.md`                                                           | Concise session summary for sharing with engineers. Key findings, decisions, changes, open items. 2-minute read max.                                                           |
+| `/relay`      | `.stoobz/CONTEXT_FOR_NEXT_SESSION.md`                                       | Everything Claude needs to resume in a new session. Optimized for machine consumption — paths, branch state, decisions, next steps, auto-detected skills to load.                            |
+| `/hone` | `.stoobz/HONE.md`                                                     | Captures your original prompt verbatim, analyzes its effectiveness, generates an optimized version, and provides coaching tips. Builds prompt engineering intuition over time. |
+| `/retro`      | `.stoobz/RETRO.md`                                                          | Session retrospective — what went well, what took longer than expected, what to do differently. Tracks recurring patterns across sessions.                                     |
+| `/handoff`    | `.stoobz/HANDOFF.md`                                                        | Teammate-facing write-up with full business context, evidence, recommendations, and links. No Claude artifacts — pure human-to-human communication.                            |
+| `/rca`        | `.stoobz/INVESTIGATION_SUMMARY.md`, `.stoobz/INVESTIGATION_CONTEXT.md`, `.stoobz/evidence/` | Root cause analysis package — quick-scan summary + Claude-droppable deep context + raw evidence. Designed for engineer + Claude consumption without any skill setup.           |
 
 ### Project Setup
 
@@ -34,12 +34,12 @@ All skills resolve the archive root at runtime: if `SESSION_KIT_ROOT` is set, us
 
 | Command                | Output                                                            | Purpose                                                                                                                        |
 | ---------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `/park`                  | `TLDR.md`, `CONTEXT_FOR_NEXT_SESSION.md`, `HONE.md`          | "I'm stepping away." Generates all core artifacts, archives to `~/.stoobz/sessions/<project>/<date-label>/`. `CONTEXT_FOR_NEXT_SESSION.md` stays in cwd as relay baton. |
+| `/park`                  | `.stoobz/TLDR.md`, `.stoobz/CONTEXT_FOR_NEXT_SESSION.md`, `.stoobz/HONE.md`          | "I'm stepping away." Generates all core artifacts in `./.stoobz/`, archives to `~/.stoobz/sessions/<project>/<date-label>/`. Relay baton stays in `./.stoobz/`. |
 | `/park <label>`          | _(same as /park)_                                                  | Park with an explicit label for the archive directory (e.g., `/park PROJ-1234`).                                               |
 | `/park --archive-system` | _(scans and archives)_                                             | Retroactive cleanup — finds scattered `.stoobz/` dirs and loose artifacts, archives full subtrees to `~/.stoobz/sessions/`. Flags: `--select` (default), `--all`, `--dry-run`, `--clean`. |
 | `/retro`                 | `RETRO.md`                                                         | Session retrospective — what went well, what took longer, what to do differently. Can run anytime; `/park` archives it if present. |
-| `/persist`               | `<name>.md` in `~/.stoobz/sessions/<project>/`                              | "Save this thing." Persists a reference artifact mid-session with tags for `/index` discovery.                                 |
-| `/persist <name> <tags>` | `<name>.md` in `~/.stoobz/sessions/<project>/`                              | Persist with explicit name and tags: `/persist runbook playbook deployment`.                                                    |
+| `/persist`               | `<name>.md` in `./.stoobz/`                              | "Save this thing." Persists a reference artifact mid-session. Archived to `~/.stoobz/sessions/` when you `/park`.                                 |
+| `/persist <name> <tags>` | `<name>.md` in `./.stoobz/`                              | Persist with explicit name and tags: `/persist runbook playbook deployment`.                                                    |
 | `/pickup`                | _(reads existing artifacts)_                                       | "I'm back." Loads prior session context and presents a briefing. The complement to `/park`.                                    |
 | `/index`                 | _(displayed, not written)_                                         | "Where was that?" Reads `~/.stoobz/manifest.json` for fast lookup. Supports filtering by topic, tag, or project.              |
 | `/index <filter>`        | _(displayed, not written)_                                         | Filter sessions — searches tags, summary, label, project, and branch (case-insensitive).                                      |
@@ -52,17 +52,17 @@ Setup                         Start                         During              
   |                             |                             |                            |
   v                             v                             v                            v
 /prime                      /pickup                    /tldr (anytime)              /park
-  Analyze codebase            Read artifacts              Quick summary               Generates:
+  Analyze codebase            Read .stoobz/               Quick summary               Generates in .stoobz/:
   Create expert skills        Load skills                 for sharing                   TLDR.md
   Create contexts             Present briefing                                          CONTEXT_FOR_NEXT_SESSION.md
   (run once or --refresh)                              /handoff (anytime)                HONE.md
                                                           Full write-up               Archives to:
                                                           for teammates                 ~/.stoobz/sessions/<project>/<date>/
-                                                                                      Updates manifest.json
-                                                       /persist (anytime)
-                                                          Save a reference            /retro (optional)
-                                                          artifact mid-session          Process reflection
-                                                          → ~/.stoobz/sessions/<project>/
+                                                                                      Relay baton stays in .stoobz/
+                                                       /persist (anytime)              Updates manifest.json
+                                                          Save a reference
+                                                          artifact mid-session        /retro (optional)
+                                                          → .stoobz/<name>.md           Process reflection
 
 Later
   |
@@ -150,7 +150,7 @@ cd into source_dir → /pickup    → resume that work
 
 ## File Existence Behavior
 
-All artifact-generating skills check for existing files before writing:
+All artifact-generating skills check for existing files in `./.stoobz/` before writing:
 
 - If the file exists, previous content is preserved under a timestamped "Previous" heading
 - New content is added as the primary (top) section
@@ -186,7 +186,7 @@ Session artifacts are archived to a central location for fast indexing and cross
 └── ...
 ```
 
-- `CONTEXT_FOR_NEXT_SESSION.md` stays in source cwd during normal `/park` (relay baton for `/pickup`). In `--archive-system` mode, it gets archived too (old sessions nobody is picking up).
+- `CONTEXT_FOR_NEXT_SESSION.md` is copied to the archive AND stays in `./.stoobz/` during normal `/park` (relay baton for `/pickup`). In `--archive-system` mode, it gets archived too (old sessions nobody is picking up).
 - `manifest.json` is the single source of truth for `/index`
 - Archives are organized by project, then by date-label
 

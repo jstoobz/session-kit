@@ -5,7 +5,7 @@ description: Save a specific artifact from the current conversation to $SESSION_
 
 # Persist
 
-Save a reference artifact from the current conversation to `~/.stoobz/sessions/` with manifest indexing. The in-flight companion to `/park`.
+Save a reference artifact from the current conversation to `./.stoobz/` during the session. Archived to `~/.stoobz/sessions/` when you `/park`. The in-flight companion to `/park`.
 
 > **Archive root:** Resolve `$SESSION_KIT_ROOT` (default: `~/.stoobz`). All `~/.stoobz/` paths below use this root.
 
@@ -45,41 +45,21 @@ Save a reference artifact from the current conversation to `~/.stoobz/sessions/`
    - Topics: debugging, performance, migration, refactor, investigation, auth, deployment, testing, infrastructure, playbook, runbook, architecture, comparison
 
 5. **Write the artifact:**
-   - Path: `~/.stoobz/sessions/<project>/<name>.md`
+   - Path: `./.stoobz/<name>.md`
    - If file already exists, ask: "Overwrite `<name>.md` or save as `<name>-2.md`?"
-   - `mkdir -p` the project directory if needed
+   - `mkdir -p .stoobz/` if needed
    - Extract/format the content as clean markdown
    - Add a small footer: `_Persisted from <project> session — <date>_`
 
-6. **Update manifest** — Read-modify-write `~/.stoobz/manifest.json`:
-   - If file doesn't exist, create with `{"sessions": []}`
-   - If corrupted, backup as `.bak` and create fresh
-   - Check if entry with same `archive_path` exists → update in place
-   - Otherwise append new entry
-
-   **Manifest entry:**
-   ```json
-   {
-     "id": "<name>",
-     "project": "<project>",
-     "date": "<YYYY-MM-DD>",
-     "label": "<name>",
-     "summary": "<first heading or first line of content>",
-     "source_dir": "<absolute path to cwd>",
-     "archive_path": "sessions/<project>/<name>.md",
-     "branch": "<git branch or null>",
-     "artifacts": ["<name>.md"],
-     "tags": ["playbook", "deployment"],
-     "type": "reference"
-   }
-   ```
+6. **No manifest update** — Persisted artifacts are archived to `~/.stoobz/sessions/` and added to the manifest when you `/park`. This keeps the manifest consistent with the archive.
 
 7. **Confirm:**
 
 ```
-Persisted to ~/.stoobz/sessions/<project>/<name>.md
+Persisted to ./.stoobz/<name>.md
   Tags:  playbook, deployment, docker
-  Find:  /index <name>  or  /index --deep <any-term-in-content>
+  Note:  Archived to ~/.stoobz/sessions/ when you /park
+  Find:  /index <name>  (after parking)
 ```
 
 ## Examples
@@ -88,25 +68,25 @@ Persisted to ~/.stoobz/sessions/<project>/<name>.md
 User: [produces a deployment methods comparison table]
 User: /persist
 
-→ Persisted to ~/.stoobz/sessions/my-app/deployment-methods.md
+→ Persisted to ./.stoobz/deployment-methods.md
   Tags:  windows, deployment, comparison
-  Find:  /index deployment
+  Note:  Archived to ~/.stoobz/sessions/ when you /park
 ```
 
 ```
 User: /persist auth-flow-notes auth architecture
 
-→ Persisted to ~/.stoobz/sessions/my-project/auth-flow-notes.md
+→ Persisted to ./.stoobz/auth-flow-notes.md
   Tags:  auth, architecture
-  Find:  /index auth-flow-notes
+  Note:  Archived to ~/.stoobz/sessions/ when you /park
 ```
 
 ```
 User: /persist deploy-runbook playbook deployment
 
-→ Persisted to ~/.stoobz/sessions/my-app/deploy-runbook.md
+→ Persisted to ./.stoobz/deploy-runbook.md
   Tags:  playbook, deployment
-  Find:  /index playbook
+  Note:  Archived to ~/.stoobz/sessions/ when you /park
 ```
 
 ## Rules
@@ -116,6 +96,6 @@ User: /persist deploy-runbook playbook deployment
 - **Don't over-format** — Preserve the artifact's natural structure. Don't wrap a table in unnecessary headings.
 - **Infer from context** — When called without a name, look at what was just discussed/produced and pick the right content and name.
 - **Tags are cheap** — 2-5 tags. Better to over-tag than under-tag. These power `/index` search.
-- **Flat in project dir** — Files go directly in `~/.stoobz/sessions/<project>/`, not in subdirectories. The manifest `type: "reference"` distinguishes them from session archives.
-- **Don't duplicate** — If the content already exists in the archive (same project, same name), update in place.
+- **Local first** — Files go in `./.stoobz/` during the session. `/park` archives them to `~/.stoobz/sessions/<project>/` alongside session artifacts.
+- **Don't duplicate** — If the content already exists in `./.stoobz/` (same name), update in place.
 - **No session ceremony** — This isn't `/park`. No TLDR, no relay doc, no prompt lab. Just save the thing.
