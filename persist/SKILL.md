@@ -59,7 +59,7 @@ On first invocation of any session-kit skill in this session, register the activ
    - If file already exists, ask: "Overwrite `<name>.md` or save as `<name>-2.md`?"
    - `mkdir -p .stoobz/` if needed
    - Extract/format the content as clean markdown
-   - Add a small footer: `_Persisted from <project> session — <date>_`
+   - Do NOT add footers — metadata belongs in headers, not footers
 
 6. **No manifest update** — Persisted artifacts are archived to `~/.stoobz/sessions/` and added to the manifest when you `/park`. This keeps the manifest consistent with the archive.
 

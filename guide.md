@@ -162,6 +162,60 @@ Each `/park` writes chain metadata into the relay baton. Each `/pickup` inherits
 
 Chains are especially useful for long-running investigations or features that span days and cross project boundaries.
 
+## Chain Branching with Checkpoint
+
+When a multi-session investigation hits dead ends or you want to carry forward only the valuable parts:
+
+```
+Session 1:  [initial analysis] → /park
+Session 2:  /pickup → [try approach A — works] → /park
+Session 3:  /pickup → [try approach B — dead end] → /park
+Session 4:  /pickup → [try approach C — partially useful] → /park
+```
+
+Now synthesize the good parts:
+
+```
+/checkpoint 1,2,4              → synthesize nodes 1, 2, 4 — skip the dead end in node 3
+```
+
+Or equivalently:
+
+```
+/checkpoint --exclude 3        → all nodes except 3
+```
+
+This produces a `CHECKPOINT_CONTEXT.md` (the synthesis) and a `CONTEXT_FOR_NEXT_SESSION.md` (the relay baton) that starts a new branch chain. The new chain knows where it came from — `/index --chain` shows the fork relationship.
+
+In a new session:
+
+```
+/pickup                        → picks up from the checkpoint, briefing shows "branched from" info
+```
+
+### When to Checkpoint
+
+- **After a long investigation** where some sessions were dead ends
+- **Before changing direction** when you want to preserve what you've learned but start clean
+- **When context is too noisy** — too many sessions carried forward, need to distill
+- **To create focused starting points** for different team members working from the same research
+
+### Checkpoint vs. Relay
+
+| | `/relay` | `/checkpoint` |
+|---|---------|---------------|
+| Source | Current session | Selected chain nodes |
+| Output | 1:1 relay baton | N:1 synthesis + relay baton |
+| Chain effect | Extends chain linearly | Branches chain (creates DAG) |
+| Dead ends | Carries everything forward | Prunes selectively |
+
+### Viewing Chains and Branches
+
+```
+/index --chain                 → see all chains and fork relationships
+/index --chain brrp-migration  → see specific chain + any branches from it
+```
+
 ## Composability
 
 Skills are independent — use any combination. Some natural pairings:
@@ -175,6 +229,8 @@ Skills are independent — use any combination. Some natural pairings:
 | Learning | `/hone` + `/retro` |
 | Reference building | `/persist` + `/index` |
 | Full ceremony | `/park` + `/retro` + `/handoff` |
+| Prune dead ends | `/checkpoint 1,2,4` → `/pickup` |
+| Branch from research | `/checkpoint` → `/pickup` → new direction |
 
 ## Tips
 

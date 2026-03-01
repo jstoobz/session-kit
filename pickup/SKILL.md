@@ -28,12 +28,15 @@ After loading the relay baton (step 2 below), extract chain metadata from `CONTE
    - `chain_id` = inherited chain_id from relay baton
    - `previous_session_id` = the session_id from the relay baton (the parked session)
    - `chain_position` = inherited chain_position + 1
+   - `parent_chain_id` = inherited if present (checkpoint-originated chains)
+   - `checkpoint_nodes` = inherited if present (checkpoint-originated chains)
 3. If no chain metadata in relay baton (legacy context): start a new chain — leave chain fields null (same as first-session behavior). `/park` will assign chain identity later.
 
 ## Process
 
 1. **Scan for artifacts** in `./.stoobz/`:
    - `.stoobz/CONTEXT_FOR_NEXT_SESSION.md` (primary — contains full resume context)
+   - `.stoobz/CHECKPOINT_CONTEXT.md` (if present — checkpoint synthesis from prior chain)
    - `.stoobz/TLDR.md` (secondary — provides session summary)
    - `.stoobz/HONE.md` (tertiary — shows original goals and optimized prompt)
    - `.stoobz/RETRO.md` (if present — shows lessons from last session)
@@ -59,6 +62,10 @@ Ready to continue. What would you like to tackle first?
 ```
 
 - If chain metadata was inherited from the relay baton, include the Chain line showing the `chain_id` and the new `chain_position`.
+- If checkpoint metadata (`parent_chain_id`, `checkpoint_nodes`) is present, use this form instead:
+  ```
+  Picked up from checkpoint. Starting chain: {chain_id} (branched from {parent_chain_id}, nodes {checkpoint_nodes}).
+  ```
 - If no chain metadata (legacy context or first session), omit the Chain line.
 
 5. **If the user pastes a CONTEXT_FOR_NEXT_SESSION.md directly** (instead of running `/pickup`), recognize it and treat it the same — no need to re-read files. Still extract chain metadata from the pasted content if present.
@@ -69,3 +76,5 @@ Ready to continue. What would you like to tackle first?
 - **Load skills silently** — Don't announce each skill load, just do it.
 - **Ask before acting** — Present the briefing and wait for direction. Don't start executing next steps autonomously.
 - **Handle stale context** — If the artifact is more than 7 days old, note this: "Context is from {date} — things may have changed."
+- **Chain metadata flows through** — If the relay baton has chain metadata, preserve it. The chain_id and position carry forward to this session's manifest entry and eventual `/park` archive. Checkpoint metadata (`parent_chain_id`, `checkpoint_nodes`) also flows through so `/park` can archive it.
+- **CHECKPOINT_CONTEXT.md is supplementary** — If both CONTEXT_FOR_NEXT_SESSION.md and CHECKPOINT_CONTEXT.md exist, the relay baton is primary. The checkpoint context provides additional background (the full synthesis). Read it for context but don't duplicate its content in the briefing.
