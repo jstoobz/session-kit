@@ -123,6 +123,45 @@ If you have scattered `.stoobz/` directories from before you started using `/par
 /handoff      → if teammates need to pick up tomorrow
 ```
 
+## Crash Recovery
+
+If a terminal crashes before `/park`, active sessions are still findable as long as any session-kit skill ran during the session (which triggers check-in):
+
+```
+/index --active    → all live sessions with resume commands
+```
+
+Copy the `return_to` command to drop back in:
+
+```
+cd ~/repos/brrp && claude --resume a1b2c3d4-...
+```
+
+If no session-kit skill ran during the session (no check-in), fall back to manual forensics:
+
+```bash
+find ~/.claude/projects/ -maxdepth 2 -name "*.jsonl" -mtime -1 | sort -t/ -k6 | tail -5
+```
+
+## Session Chains
+
+Chains track a logical work stream across multiple park/pickup cycles, even across projects:
+
+```
+Session 1 (stoobz-api): /pickup → [work] → /park brrp-migration
+Session 2 (stoobz-web): /pickup → [inherits chain] → [work] → /park
+Session 3 (stoobz-web): /pickup → [inherits chain] → [work] → /park
+```
+
+Each `/park` writes chain metadata into the relay baton. Each `/pickup` inherits it and increments the position. The chain gets its name from the first `/park` label.
+
+```
+/index --chain                → see all chains grouped
+/index --chain brrp-migration → see one chain's timeline
+```
+
+Chains are especially useful for long-running investigations or features that span days and cross project boundaries.
+
 ## Composability
 
 Skills are independent — use any combination. Some natural pairings:

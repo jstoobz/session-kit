@@ -9,6 +9,16 @@ Generate all session artifacts, archive them to `~/.stoobz/sessions/`, and clean
 
 > **Archive root:** Resolve `$SESSION_KIT_ROOT` (default: `~/.stoobz`). All `~/.stoobz/` paths below use this root.
 
+## Session Check-In (silent — before main process)
+
+On first invocation of any session-kit skill in this session, register the active session in the manifest. See [session-checkin.md](../session-checkin.md) for the full protocol. Summary:
+
+1. Detect session ID from most recently modified `.jsonl` in `~/.claude/projects/$(pwd | tr '/' '-')/` (fallback: git root encoding). If detection fails, skip silently.
+2. Read `$SESSION_KIT_ROOT/manifest.json` (create if missing).
+3. If no entry with this `session_id` exists → create active registration (`status: "active"`, `session_id`, `return_to`, `started_at`, `last_activity`, `last_exchange`, `skills_used`, nulls for label/summary/archive_path).
+4. If entry exists → update `last_activity`, `last_exchange`, append this skill to `skills_used`.
+5. Write manifest. Proceed to main process. No output about check-in.
+
 ## Process
 
 ### Phase 1 — Generate Artifacts
@@ -60,10 +70,14 @@ Generate all session artifacts, archive them to `~/.stoobz/sessions/`, and clean
 9. **Update manifest** — Read-modify-write `~/.stoobz/manifest.json`:
    - If file doesn't exist, create it with `{"sessions": []}`
    - If file is corrupted/unparseable, back it up as `manifest.json.bak` and create fresh
-   - Check if an entry with the same `archive_path` already exists → update in place
-   - Otherwise append a new entry
 
-   **Manifest entry schema:**
+   **Lookup order (first match wins):**
+   1. **Active entry match:** Find an entry with matching `session_id` and `"status": "active"`. If found, **upgrade it**: set `status` to `"archived"`, populate `id` (date-label), `label`, `summary`, `archive_path`, `artifacts`, `tags`. Update `last_activity` and `last_exchange`. Keep `session_id`, `started_at`, `return_to`, `chain_id`, `chain_position`, `previous_session_id`, `skills_used` from the active entry.
+   2. **Chain naming:** If this is `chain_position` 1 and `chain_id` is null or equals the `session_id` (fallback), update `chain_id` to the park label. For position 1, also set `chain_position` to 1. If `chain_id` was already set (inherited from pickup), keep it.
+   3. **Archive path match:** If no active match, check if an entry with the same `archive_path` exists → update in place (existing behavior).
+   4. **New entry:** Otherwise append a new entry with all fields including the new ones.
+
+   **Manifest entry schema (archived):**
    ```json
    {
      "id": "<YYYY-MM-DD>-<label>",
@@ -76,7 +90,23 @@ Generate all session artifacts, archive them to `~/.stoobz/sessions/`, and clean
      "branch": "<git branch or null>",
      "artifacts": ["TLDR.md", "HONE.md"],
      "tags": ["elixir", "auth"],
-     "type": "session"
+     "type": "session",
+
+     "status": "archived",
+     "session_id": "<session-uuid>",
+     "return_to": "cd ~/path && claude --resume <session-uuid>",
+
+     "chain_id": "<label or session-id>",
+     "chain_position": 1,
+     "previous_session_id": null,
+
+     "started_at": "<ISO-8601>",
+     "last_activity": "<ISO-8601>",
+     "last_exchange": {
+       "user": { "text": "...", "timestamp": "..." },
+       "assistant": { "text": "...", "timestamp": "..." }
+     },
+     "skills_used": ["tldr", "relay", "hone", "park"]
    }
    ```
 
@@ -85,19 +115,36 @@ Generate all session artifacts, archive them to `~/.stoobz/sessions/`, and clean
    - Frameworks: phoenix, ecto, oban, react, next, absinthe, liveview
    - Topics: debugging, performance, migration, refactor, investigation, auth, deployment, testing, infrastructure
 
-10. **Print summary:**
+10. **Write chain metadata to relay baton** — After writing the manifest, append a machine-readable comment block to `./.stoobz/CONTEXT_FOR_NEXT_SESSION.md`:
+
+    ```
+    <!-- session-kit-chain
+    chain_id: <resolved chain_id>
+    session_id: <this session's uuid>
+    chain_position: <this session's position>
+    -->
+    ```
+
+    This block is what `/pickup` reads to continue the chain in the next session. Append it at the end of the file, after all other content.
+
+11. **Print summary:**
 
 ```
 Session parked and archived.
 
-  Archive:  ~/.stoobz/sessions/<project>/<date-label>/
-  Artifacts archived: TLDR.md, HONE.md, CONTEXT_FOR_NEXT_SESSION.md
-  Relay:    .stoobz/CONTEXT_FOR_NEXT_SESSION.md (stays in .stoobz/)
-  Tags:     elixir, phoenix, auth
+  Archive:   ~/.stoobz/sessions/<project>/<date-label>/
+  Artifacts: TLDR.md, HONE.md, CONTEXT_FOR_NEXT_SESSION.md
+  Relay:     .stoobz/CONTEXT_FOR_NEXT_SESSION.md (stays for /pickup)
+  Tags:      elixir, phoenix, auth
+  Session:   <uuid-first-8>... (archived)
+  Chain:     <chain_id> (node <N> of <N>)
 
-  Run /pickup in this directory to resume.
-  Run /index to find past sessions.
+  /pickup  — resume from this directory (continues chain)
+  /index   — find past sessions
 ```
+
+- **Session** shows the first 8 characters of the session UUID.
+- **Chain** shows the chain_id and this session's position. If this is the only session in the chain, show "(node 1 of 1)". If chain_id is null (no chain), omit this line.
 
 ## `--archive-system` — Retroactive Cleanup
 

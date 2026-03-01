@@ -45,6 +45,26 @@ All skills resolve the archive root at runtime: if `SESSION_KIT_ROOT` is set, us
 | `/index <filter>`        | _(displayed, not written)_                                         | Filter sessions — searches tags, summary, label, project, and branch (case-insensitive).                                      |
 | `/index --deep <term>`   | _(displayed, not written)_                                         | Deep search — greps inside archived artifact content when manifest metadata isn't enough.                                      |
 
+## Session Check-In
+
+Session Kit registers active sessions in the manifest on first skill use. This makes live sessions discoverable via `/index --active` even if the terminal crashes before `/park`.
+
+- First skill invocation → detects Claude Code session UUID → creates `"active"` manifest entry
+- Subsequent skill invocations → updates `last_activity` and `last_exchange`
+- `/park` → upgrades entry to `"archived"` with full metadata
+- Entries without `status` field → treated as `"archived"` (backward compatible)
+
+See [session-checkin.md](session-checkin.md) for the full protocol including session ID detection, chain propagation, and graceful degradation.
+
+### Session Chains
+
+A **chain** is a logical work stream spanning multiple Claude Code sessions connected via park/pickup. Chains enable tracking related sessions across projects and time:
+
+- `/park` writes chain metadata into the relay baton (`CONTEXT_FOR_NEXT_SESSION.md`)
+- `/pickup` inherits chain identity from the relay baton, incrementing position
+- `/index --chain` groups sessions by chain for a full work stream timeline
+- Chains can span projects (e.g., stoobz-api → stoobz-web) — `chain_id` is the thread, `project` varies per node
+
 ## Session Lifecycle
 
 ```
@@ -53,23 +73,27 @@ Setup                         Start                         During              
   v                             v                             v                            v
 /prime                      /pickup                    /tldr (anytime)              /park
   Analyze codebase            Read .stoobz/               Quick summary               Generates in .stoobz/:
-  Create expert skills        Load skills                 for sharing                   TLDR.md
-  Create contexts             Present briefing                                          CONTEXT_FOR_NEXT_SESSION.md
-  (run once or --refresh)                              /handoff (anytime)                HONE.md
-                                                          Full write-up               Archives to:
-                                                          for teammates                 ~/.stoobz/sessions/<project>/<date>/
-                                                                                      Relay baton stays in .stoobz/
-                                                       /persist (anytime)              Updates manifest.json
-                                                          Save a reference
-                                                          artifact mid-session        /retro (optional)
-                                                          → .stoobz/<name>.md           Process reflection
-
+  Create expert skills        Load skills     CHECK-IN      for sharing                   TLDR.md
+  Create contexts             Present briefing  ↓                                         CONTEXT_FOR_NEXT_SESSION.md
+  (run once or --refresh)     Inherit chain   Manifest    /handoff (anytime)                HONE.md
+                                              updated       Full write-up               Archives to:
+                              CHECK-IN                      for teammates                 ~/.stoobz/sessions/<project>/<date>/
+                                ↓                                                       Relay baton stays in .stoobz/
+                              Manifest       /persist (anytime)                          Chain metadata in relay baton
+                              updated          Save a reference              CHECK-IN    Updates manifest.json
+                                               artifact mid-session           ↓          Active → Archived
+                                               → .stoobz/<name>.md         Manifest
+                                                                            updated    /retro (optional)
+                                                                                         Process reflection
 Later
   |
   v
 /index
   Fast manifest lookup
   Filter by tag/project
+  --active: live sessions
+  --since: time filter
+  --chain: work streams
 ```
 
 ## Composability Flows
@@ -210,6 +234,10 @@ Session artifacts are archived to a central location for fast indexing and cross
 | Persist with name and tags              | `/persist <name> <tag1> <tag2>...` |
 | Find sessions by topic                  | `/index <filter>`      |
 | Search inside archived artifacts        | `/index --deep <term>` |
+| Find active sessions                    | `/index --active`      |
+| Find recent work                        | `/index --since 1d`    |
+| View a work stream timeline             | `/index --chain <term>` |
+| Resume a crashed session                | Copy `return_to` from `/index --active` |
 | Archive scattered artifacts             | `/park --archive-system`           |
 | Preview archive cleanup                | `/park --archive-system --dry-run` |
 | Archive everything non-interactively   | `/park --archive-system --all`     |
