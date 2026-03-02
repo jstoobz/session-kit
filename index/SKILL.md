@@ -15,15 +15,37 @@ Find and catalog past sessions from the `~/.stoobz/sessions/` archive.
 
 1. **Read `~/.stoobz/manifest.json`** — Parse the sessions array.
 
-2. **Apply filter** (if user provided an argument):
+2. **Partition by status** — Separate entries into active (`status == "active"`) and archived (`status != "active"` or no `status` field). Active sessions display first.
+
+3. **Apply filter** (if user provided an argument):
    - `/index` → show all sessions
-   - `/index <term>` → case-insensitive search across: `tags`, `summary`, `label`, `project`, `branch`
+   - `/index <term>` → case-insensitive search across: `tags`, `summary`, `label`, `project`, `branch`, `session_id` (partial UUID match), `chain_id`, `last_exchange` text
    - Multiple words are ANDed (all must match somewhere across fields)
 
-3. **Present the index:**
+### Active Sessions (shown first)
+
+Display entries where `status == "active"` before archived sessions:
 
 ```markdown
-## Session Index — ~/.stoobz/manifest.json (N sessions)
+## Active Sessions
+
+| Project | Since | Last Active | Branch | Last Exchange | Resume |
+|---------|-------|-------------|--------|---------------|--------|
+| stoobz-web | 2h ago | 5m ago | main | "Nailed it! /persist the mig..." / "Persisted to ./stoobz/..." | `cd ~/... && claude --resume 2578...` |
+```
+
+- **Since:** Relative time from `started_at` ("2h ago", "1d ago")
+- **Last Active:** Relative time from `last_activity`
+- **Last Exchange:** User text / Assistant text (from `last_exchange`, already truncated at 80 chars)
+- **Resume:** The `return_to` value, displayed as code
+- If no active sessions, skip this section silently
+
+### Archived Sessions
+
+4. **Present the archived index:**
+
+```markdown
+## Session Index — ~/.stoobz/manifest.json (N archived sessions)
 
 | Project | Date | Label | Summary | Artifacts | Tags |
 |---------|------|-------|---------|-----------|------|
@@ -42,9 +64,38 @@ Find and catalog past sessions from the `~/.stoobz/sessions/` archive.
    - `H` = HANDOFF.md
    - `I` = INVESTIGATION_SUMMARY.md or INVESTIGATION_CONTEXT.md
 
-4. **For each result**, show the `source_dir` so the user can `cd` there and `/pickup`.
+5. **For each result**, show the `source_dir` so the user can `cd` there and `/pickup`.
 
-5. **If user is searching**, highlight matching results and show the summary field for context.
+6. **If user is searching**, highlight matching results and show the summary field for context.
+
+### `--active` Flag
+
+Show only active sessions. Skip the archived section entirely.
+
+### `--since <duration>` Flag
+
+Filter all entries (active + archived) by recency.
+- Duration formats: `1h`, `4h`, `1d`, `3d`, `1w`, `2w`
+- Compare against `last_activity` (if present) or `date` field
+- Show matching entries in their respective sections (active first, then archived)
+
+### `--chain <term>` Flag
+
+Group entries by `chain_id`, show the full work stream timeline:
+
+```markdown
+## Chain: brrp-migration (2 sessions, Feb 28 - Mar 1)
+
+| # | Date | Project | Branch | Status | Summary / Last Exchange | Resume |
+|---|------|---------|--------|--------|-------------------------|--------|
+| 1 | Feb 28 | stoobz-api | main | archived | Schema migration deep dive... | cd ~/...api && claude ... |
+| 2 | Mar 1 | stoobz-web | main | ACTIVE | "Nailed it! /persist the mig..." | cd ~/...web && claude ... |
+```
+
+- `/index --chain` (no term): show all chains, grouped by `chain_id`, sorted by most recent activity
+- `/index --chain <term>`: filter chains by `chain_id`, `project`, or `summary` content matching the term
+- Entries without a `chain_id` are shown separately under "Unchained Sessions"
+- Within each chain, sort by `chain_position` ascending
 
 ### Deep Search — `--deep`
 

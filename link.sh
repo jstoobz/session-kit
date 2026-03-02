@@ -56,7 +56,7 @@ for skill in "${SKILLS[@]}"; do
 done
 
 # Link top-level reference docs
-DOCS=(session-kit.md)
+DOCS=(session-kit.md session-checkin.md)
 
 for doc in "${DOCS[@]}"; do
   src="$SCRIPT_DIR/$doc"

@@ -15,6 +15,16 @@ Save a reference artifact from the current conversation to `./.stoobz/` during t
 /index    → finds both
 ```
 
+## Session Check-In (silent — before main process)
+
+On first invocation of any session-kit skill in this session, register the active session in the manifest. See [session-checkin.md](../session-checkin.md) for the full protocol. Summary:
+
+1. Detect session ID from most recently modified `.jsonl` in `~/.claude/projects/$(pwd | tr '/' '-')/` (fallback: git root encoding). If detection fails, skip silently.
+2. Read `$SESSION_KIT_ROOT/manifest.json` (create if missing).
+3. If no entry with this `session_id` exists → create active registration (`status: "active"`, `session_id`, `return_to`, `started_at`, `last_activity`, `last_exchange`, `skills_used`, nulls for label/summary/archive_path).
+4. If entry exists → update `last_activity`, `last_exchange`, append this skill to `skills_used`.
+5. Write manifest. Proceed to main process. No output about check-in.
+
 ## Process
 
 1. **Identify the artifact** — Look at recent conversation context. What did the user just produce or want to keep? Could be:
