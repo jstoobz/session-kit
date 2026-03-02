@@ -18,6 +18,7 @@ All skills resolve the archive root at runtime: if `SESSION_KIT_ROOT` is set, us
 | ------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `/tldr`       | `.stoobz/TLDR.md`                                                           | Concise session summary for sharing with engineers. Key findings, decisions, changes, open items. 2-minute read max.                                                           |
 | `/relay`      | `.stoobz/CONTEXT_FOR_NEXT_SESSION.md`                                       | Everything Claude needs to resume in a new session. Optimized for machine consumption — paths, branch state, decisions, next steps, auto-detected skills to load.                            |
+| `/checkpoint` | `.stoobz/CHECKPOINT_CONTEXT.md`, `.stoobz/CONTEXT_FOR_NEXT_SESSION.md`      | Selective synthesis across chain nodes. Reads archived artifacts from selected sessions, synthesizes a focused context, and writes a relay baton that starts a new branch chain. |
 | `/hone` | `.stoobz/HONE.md`                                                     | Captures your original prompt verbatim, analyzes its effectiveness, generates an optimized version, and provides coaching tips. Builds prompt engineering intuition over time. |
 | `/retro`      | `.stoobz/RETRO.md`                                                          | Session retrospective — what went well, what took longer than expected, what to do differently. Tracks recurring patterns across sessions.                                     |
 | `/handoff`    | `.stoobz/HANDOFF.md`                                                        | Teammate-facing write-up with full business context, evidence, recommendations, and links. No Claude artifacts — pure human-to-human communication.                            |
@@ -44,6 +45,9 @@ All skills resolve the archive root at runtime: if `SESSION_KIT_ROOT` is set, us
 | `/index`                 | _(displayed, not written)_                                         | "Where was that?" Reads `~/.stoobz/manifest.json` for fast lookup. Supports filtering by topic, tag, or project.              |
 | `/index <filter>`        | _(displayed, not written)_                                         | Filter sessions — searches tags, summary, label, project, and branch (case-insensitive).                                      |
 | `/index --deep <term>`   | _(displayed, not written)_                                         | Deep search — greps inside archived artifact content when manifest metadata isn't enough.                                      |
+| `/checkpoint`            | `.stoobz/CHECKPOINT_CONTEXT.md`, `.stoobz/CONTEXT_FOR_NEXT_SESSION.md` | Synthesize selected chain nodes into a focused starting point. Creates a branch chain. |
+| `/checkpoint 1,2,4`     | _(same as /checkpoint)_                                            | Checkpoint specific nodes by chain position.                                                                                    |
+| `/checkpoint --exclude 3`| _(same as /checkpoint)_                                           | Checkpoint all nodes except specified.                                                                                          |
 
 ## Session Check-In
 
@@ -62,7 +66,8 @@ A **chain** is a logical work stream spanning multiple Claude Code sessions conn
 
 - `/park` writes chain metadata into the relay baton (`CONTEXT_FOR_NEXT_SESSION.md`)
 - `/pickup` inherits chain identity from the relay baton, incrementing position
-- `/index --chain` groups sessions by chain for a full work stream timeline
+- `/checkpoint` synthesizes selected nodes from a chain and branches into a new chain (turning the linked list into a DAG)
+- `/index --chain` groups sessions by chain for a full work stream timeline, with fork annotations for checkpoint branches
 - Chains can span projects (e.g., stoobz-api → stoobz-web) — `chain_id` is the thread, `project` varies per node
 
 ## Session Lifecycle
@@ -85,15 +90,15 @@ Setup                         Start                         During              
                                                → .stoobz/<name>.md         Manifest
                                                                             updated    /retro (optional)
                                                                                          Process reflection
-Later
-  |
-  v
-/index
-  Fast manifest lookup
-  Filter by tag/project
-  --active: live sessions
-  --since: time filter
-  --chain: work streams
+Later                         Branch
+  |                             |
+  v                             v
+/index                      /checkpoint
+  Fast manifest lookup        Synthesize N chain nodes
+  Filter by tag/project       Prune dead ends
+  --active: live sessions     Write focused relay baton
+  --since: time filter        Branch chain (creates DAG)
+  --chain: work streams       /pickup to start from checkpoint
 ```
 
 ## Composability Flows
@@ -135,6 +140,16 @@ Next session: /pickup → [finish] → /handoff + /park
 Session 1:  [investigate] → /rca       (package findings + evidence for teammate)
                           → /park      (save your own session context too)
 Teammate:   [drop INVESTIGATION_CONTEXT.md path into Claude] → review → verify → fix
+```
+
+### Chain Branching (selective synthesis)
+
+```
+Session 1:  [investigate approach A] → /park
+Session 2:  /pickup → [investigate approach B, dead end] → /park
+Session 3:  /pickup → [investigate approach C] → /park
+Session 4:  /checkpoint 1,3 → synthesize sessions 1+3, skip the dead end
+New session: /pickup → start from clean checkpoint (approach A+C context only)
 ```
 
 ### Prompt Honing Loop
@@ -181,6 +196,20 @@ All artifact-generating skills check for existing files in `./.stoobz/` before w
 - This creates a rolling history — latest first, older entries below
 - Open items from previous sessions are carried forward (completed items checked off)
 
+## Archive-First Principle
+
+**Write to the archive before writing to the local `.stoobz/` directory.** This applies to every skill that writes artifacts to both locations.
+
+The archive (`~/.stoobz/sessions/`) is the durable, long-term store. The local `./.stoobz/` is the volatile working copy. If a crash happens between writes, the durable copy should be the one that survives.
+
+| Skill | Follows archive-first | Why it matters |
+|-------|----------------------|----------------|
+| `/checkpoint` | Yes | Synthesis is irreproducible — analytical judgment varies with context |
+| `/persist` | Yes | Reference artifacts are immediate-write to archive |
+| `/park` | Not yet | Currently writes local first then archives — future refactor will align it |
+
+**The pattern:** `mkdir -p` the archive path, write the file there, then copy to `./.stoobz/`. If only one write succeeds, it should be the durable one.
+
 ## Archive Convention
 
 Session artifacts are archived to a central location for fast indexing and cross-project discovery:
@@ -211,8 +240,10 @@ Session artifacts are archived to a central location for fast indexing and cross
 ```
 
 - `CONTEXT_FOR_NEXT_SESSION.md` is copied to the archive AND stays in `./.stoobz/` during normal `/park` (relay baton for `/pickup`). In `--archive-system` mode, it gets archived too (old sessions nobody is picking up).
+- `CHECKPOINT_CONTEXT-<chain_id>.md` is written archive-first to `~/.stoobz/sessions/<project>/` alongside the checkpoint's relay baton (see [Archive-First Principle](#archive-first-principle)).
 - `manifest.json` is the single source of truth for `/index`
 - Archives are organized by project, then by date-label
+- Sessions with `chain_id` form chains visible via `/index --chain`
 
 ## Quick Reference
 
@@ -237,6 +268,9 @@ Session artifacts are archived to a central location for fast indexing and cross
 | Find active sessions                    | `/index --active`      |
 | Find recent work                        | `/index --since 1d`    |
 | View a work stream timeline             | `/index --chain <term>` |
+| Synthesize selected sessions            | `/checkpoint`          |
+| Checkpoint specific nodes               | `/checkpoint 1,2,4`   |
+| Checkpoint excluding nodes              | `/checkpoint --exclude 3` |
 | Resume a crashed session                | Copy `return_to` from `/index --active` |
 | Archive scattered artifacts             | `/park --archive-system`           |
 | Preview archive cleanup                | `/park --archive-system --dry-run` |

@@ -9,6 +9,7 @@ SKILLS_DIR="${HOME}/.claude/skills"
 mkdir -p "$SKILLS_DIR"
 
 SKILLS=(
+  checkpoint
   sweep
   handoff
   index

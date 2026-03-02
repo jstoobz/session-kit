@@ -71,6 +71,8 @@ When a session is first registered, the manifest entry looks like:
   "chain_id": null,
   "chain_position": null,
   "previous_session_id": null,
+  "parent_chain_id": null,
+  "checkpoint_nodes": null,
 
   "started_at": "<ISO-8601 timestamp from first JSONL entry>",
   "last_activity": "<ISO-8601 timestamp, updated each check-in>",
@@ -88,7 +90,7 @@ When a session is first registered, the manifest entry looks like:
 }
 ```
 
-**Chain fields** on first registration: `chain_id`, `chain_position`, and `previous_session_id` are null unless `/pickup` inherited chain metadata from a relay baton (see Chain Propagation below).
+**Chain fields** on first registration: `chain_id`, `chain_position`, and `previous_session_id` are null unless `/pickup` inherited chain metadata from a relay baton (see Chain Propagation below). **Checkpoint fields** (`parent_chain_id`, `checkpoint_nodes`) are null unless the chain originated from `/checkpoint`.
 
 ## Check-In Process (executed by each skill)
 
@@ -145,10 +147,24 @@ Session 25788ed2 (stoobz-web dir)  ←  /pickup inherits chain
    - `chain_id` = inherited chain_id
    - `previous_session_id` = the session_id from the relay baton
    - `chain_position` = inherited chain_position + 1
+   - `parent_chain_id` = inherited if present (checkpoint-originated chains)
+   - `checkpoint_nodes` = inherited if present (checkpoint-originated chains)
 
 4. **`/park` with label** on a position-1 session: if `chain_id` equals the `session_id` (fallback), update it to the park label so the chain gets a proper name.
 
 5. **No chain metadata in relay baton** (legacy context or first session): start a new chain. `chain_id` set by `/park`.
+
+6. **`/checkpoint` creates a branch chain** by writing extended chain metadata:
+   ```
+   <!-- session-kit-chain
+   chain_id: brrp-migration-cp-2026-03-01
+   session_id: 3a4b5c6d-...
+   chain_position: 1
+   parent_chain_id: brrp-migration
+   checkpoint_nodes: 1,2,4
+   -->
+   ```
+   The `parent_chain_id` and `checkpoint_nodes` fields are unique to checkpoint-originated chains. They create a DAG (directed acyclic graph) relationship between chains, visible via `/index --chain`.
 
 ### Chain Naming Resolution
 
@@ -168,12 +184,13 @@ The first `/park` in a chain names it. Subsequent sessions inherit.
 | Manifest read fails | Back up as `.bak`, create fresh, register |
 | JSONL read fails (timestamps/exchange) | Use current time for `started_at`, null for `last_exchange` |
 | Chain metadata missing from relay | Start new chain (null chain fields) |
+| Checkpoint metadata missing from relay | Normal chain (null parent_chain_id, null checkpoint_nodes) |
 
 ## Skills That Check In
 
 All session-kit skills except `sweep` (maintenance) and `index` (read-only query):
 
-`park`, `pickup`, `persist`, `tldr`, `relay`, `hone`, `retro`, `handoff`, `rca`, `prime`
+`park`, `pickup`, `persist`, `checkpoint`, `tldr`, `relay`, `hone`, `retro`, `handoff`, `rca`, `prime`
 
 ## Skills Tracking
 

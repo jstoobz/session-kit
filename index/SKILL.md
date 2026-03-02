@@ -53,12 +53,13 @@ Display entries where `status == "active"` before archived sessions:
 | my-project | 2026-02-10 | auth-token-refresh | Token expiry investigation | T H P | elixir, phoenix |
 | api-gateway | 2026-01-28 | rate-limiting | API rate limiting | T I | go, infrastructure |
 
-**Legend:** T=TLDR C=Context R=Retro P=Hone H=Handoff I=Investigation
+**Legend:** T=TLDR C=Context K=Checkpoint R=Retro P=Hone H=Handoff I=Investigation
 ```
 
    **Artifact abbreviations:**
    - `T` = TLDR.md
    - `C` = CONTEXT_FOR_NEXT_SESSION.md
+   - `K` = CHECKPOINT_CONTEXT.md
    - `R` = RETRO.md
    - `P` = HONE.md
    - `H` = HANDOFF.md
@@ -93,9 +94,17 @@ Group entries by `chain_id`, show the full work stream timeline:
 ```
 
 - `/index --chain` (no term): show all chains, grouped by `chain_id`, sorted by most recent activity
-- `/index --chain <term>`: filter chains by `chain_id`, `project`, or `summary` content matching the term
+- `/index --chain <term>`: filter chains by `chain_id`, `project`, or `summary` content matching the term. Also show any chains that forked from the matched chain (where `parent_chain_id` matches).
 - Entries without a `chain_id` are shown separately under "Unchained Sessions"
 - Within each chain, sort by `chain_position` ascending
+
+**Fork annotations:** Chains created via `/checkpoint` have `parent_chain_id` and `checkpoint_nodes`. Display these as:
+
+```markdown
+### focused-fix (2 nodes) ← forked from brrp-migration (nodes 1, 2)
+```
+
+When viewing a specific chain (`/index --chain brrp-migration`), also show any branches that forked from it.
 
 ### Deep Search — `--deep`
 
