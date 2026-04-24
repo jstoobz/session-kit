@@ -82,6 +82,30 @@ Identify the technology stack from project files:
 
 Note hybrid stacks (e.g., .NET backend + React frontend).
 
+### 1d. .claudeignore Generation
+
+Check for an existing `.claudeignore` in the repo root.
+
+**If missing:** create it with build artifacts for the detected stack. No approval gate — just create and report one line: `"Created .claudeignore with {N} patterns for {stack}."`.
+
+**If exists:** scan for missing patterns from the table below. If any are absent, append them and report: `"Added {N} missing patterns to .claudeignore."`. If already complete, skip silently.
+
+**If `--refresh`:** re-run this check — new dependencies or tooling may have been added.
+
+Stack → patterns to ignore:
+
+| Stack | Patterns |
+|-------|----------|
+| Elixir/Phoenix | `deps/`, `_build/`, `priv/static/assets/`, `.elixir_ls/`, `*.beam` |
+| Node/React/Vue/Angular | `node_modules/`, `dist/`, `.next/`, `build/`, `.nuxt/`, `coverage/` |
+| Python | `__pycache__/`, `.venv/`, `venv/`, `*.pyc`, `.pytest_cache/`, `dist/`, `build/` |
+| Rust | `target/` |
+| Go | `vendor/` (only if directory exists) |
+| Ruby/Rails | `vendor/bundle/` |
+| .NET | `bin/`, `obj/`, `packages/` |
+| Java/Kotlin | `target/`, `build/`, `.gradle/` |
+| All stacks | `*.log`, `.DS_Store` |
+
 ## Phase 2: Deep Analysis
 
 Launch parallel background agents to analyze each architectural layer. Use the Task tool with `subagent_type=Explore` and `run_in_background=true`.
@@ -119,8 +143,36 @@ And 2 context files:
 - {repo}-feature-context — loads all experts for feature development
 - {repo}-debug-context — loads relevant experts + debugging decision tree
 
-Does this look right, or should I adjust the boundaries?
+I'd also suggest these per-repo hooks for `.claude/settings.json`:
+- {hook description and trigger — see table below}
+
+Does this look right? Any adjustments to skills, contexts, or hooks?
 ```
+
+**Suggested hooks by stack** — include only hooks for linters/formatters that are present in the repo (check `mix.exs`, `package.json`, `pyproject.toml`, etc. for the tool before suggesting it):
+
+| Stack | Hook | Trigger | Command |
+|-------|------|---------|---------|
+| Elixir | Format enforcement | `PreToolUse: Bash(git commit *)` | `mix format` |
+| Elixir (if `credo` in deps) | Style check | `PreToolUse: Bash(git commit *)` | `mix credo --strict` |
+| Node/TS (if lint script exists) | Lint check | `PreToolUse: Bash(git commit *)` | `npm run lint` |
+| Node/TS (if `prettier` in devDeps) | Format check | `PreToolUse: Bash(git commit *)` | `npx prettier --check .` |
+| Python (if `ruff` present) | Lint check | `PreToolUse: Bash(git commit *)` | `ruff check .` |
+| Python (if `black` present) | Format check | `PreToolUse: Bash(git commit *)` | `black --check .` |
+| Rust | Format check | `PreToolUse: Bash(git commit *)` | `cargo fmt --check` |
+| Ruby (if `.rubocop.yml` exists) | Style check | `PreToolUse: Bash(git commit *)` | `rubocop` |
+
+If the user approves hooks: apply them via `/update-config`. Hook format for `settings.json`:
+```json
+"hooks": {
+  "PreToolUse": [{
+    "matcher": "Bash(git commit *)",
+    "hooks": [{ "type": "command", "command": "{command}" }]
+  }]
+}
+```
+
+If no hooks are relevant to the detected stack, omit the hooks section from the proposal entirely.
 
 **Guidelines for proposing skills:**
 
@@ -256,15 +308,18 @@ When called with `--refresh`:
      If >20 files changed or >5 commits → re-analyze that layer
      Otherwise → skip, skill is current
    ```
-4. **Phase 3** — propose updates as diffs, not full rewrites:
+4. **Phase 1d** — re-run `.claudeignore` check (new deps/tooling may have been added)
+5. **Phase 3** — propose updates as diffs, not full rewrites. Include hook suggestions for any new tooling detected (e.g., `credo` was added since last prime):
    ```
    {skill-name}: 2 new sections, 1 updated section
    - Added: New background job pattern (CMSWebsite/Jobs/NewJob.cs)
    - Updated: Controller patterns (new base class added)
    - Unchanged: Domain vocabulary, Auth flow
+
+   New hook available: credo added to deps — suggest PreToolUse on git commit?
    ```
-5. **Phase 4** — update only changed sections, preserve unchanged content
-6. **Phase 5** — verify placement (should already be wired)
+6. **Phase 4** — update only changed sections, preserve unchanged content
+7. **Phase 5** — verify placement (should already be wired)
 
 ## Rules
 
