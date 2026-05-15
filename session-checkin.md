@@ -1,13 +1,15 @@
 # Session Check-In Protocol
 
-Early registration of active Claude Code sessions in the manifest. Makes live sessions discoverable via `/index --active` even if the terminal crashes before `/park`.
+Early registration of active Claude Code sessions in the manifest, plus pre-allocation of the active archive directory and artifact ledger that the durable-first write protocol depends on (see [write-artifact-protocol.md](write-artifact-protocol.md)).
 
 ## How It Works
 
 ```
-First skill invocation → detect session UUID → create "active" manifest entry
-Subsequent invocations → update last_activity, last_exchange, skills_used
-/park                  → upgrade entry to "archived" with full metadata
+First skill invocation → detect session UUID
+                       → create "active" manifest entry
+                       → pre-allocate <session-id>-active/ dir + .session-artifacts.json ledger
+Subsequent invocations → update last_activity, last_exchange, skills_used (idempotent on dir/ledger)
+/park                  → upgrade entry to "archived", rename active dir to date-label
 ```
 
 Entries without a `status` field are treated as `"archived"` (backward compatible with existing manifest entries).
@@ -38,7 +40,44 @@ fi
 RETURN_TO="cd $(pwd | sed "s|^$HOME|~|") && claude --resume $SESSION_ID"
 ```
 
-If detection fails, skip check-in silently. The skill proceeds normally.
+**Failure policy (changed from prior versions).** If both the cwd-encoded lookup and the git-root fallback fail to produce a `SESSION_ID`, check-in fails loudly. The skill MUST NOT proceed to write an artifact, because the durable-first protocol cannot address an archive location without a session ID. Surface the error described in [write-artifact-protocol.md § Session-ID detection failure](write-artifact-protocol.md).
+
+The prior "skip silently" policy was safe under lazy-archive (artifacts went to cwd regardless), but under durable-first it would mask a real failure mode — the artifact would be written to cwd only, with no archive copy and no ledger entry. That is the exact outcome ADR-0004 set out to eliminate.
+
+## Active Archive Directory + Ledger
+
+The durable-first protocol requires that, by the time any artifact-writing skill runs, an active archive directory and an empty ledger already exist. Check-in is responsible for creating both.
+
+**Active dir path:**
+
+```
+$SESSION_KIT_ROOT/sessions/<project>/<session-id>-active/
+```
+
+`<project>` is `basename $(git rev-parse --show-toplevel)` or `basename $(pwd)` (same logic as the manifest entry's project field).
+
+**Ledger path:** `<active-dir>/.session-artifacts.json`
+
+**Initial ledger content:**
+
+```json
+{
+  "schema_version": 1,
+  "session_id": "<session-uuid>",
+  "started_at": "<iso8601 — matches manifest entry>",
+  "source_dir": "<absolute cwd path>",
+  "artifacts": []
+}
+```
+
+### Idempotency
+
+Check-in runs on every session-kit skill invocation, but active-dir + ledger creation must be safe to re-enter:
+
+- **Active dir:** `mkdir -p` — no-op if it already exists.
+- **Ledger:** create only if missing. If a ledger already exists, leave it alone. The `session_id`, `started_at`, and `source_dir` fields are **write-once**; the `artifacts` array is **append-only** (skills append; nothing rewrites prior entries).
+
+If the active dir or ledger creation fails (permissions, disk, etc.), check-in fails loudly. Without them, no skill can write durably.
 
 ## Timestamp Extraction
 
@@ -96,21 +135,26 @@ When a session is first registered, the manifest entry looks like:
 
 ### Initial Registration (no entry with this `session_id`)
 
-1. Detect session ID using the method above. If detection fails, skip silently.
+1. Detect session ID using the method above. If both detection paths fail, **fail loudly** (see Failure policy above).
 2. Read `$SESSION_KIT_ROOT/manifest.json` (create with `{"sessions": []}` if missing).
 3. Determine project name: `basename $(git rev-parse --show-toplevel)` or `basename $(pwd)`.
 4. Determine branch: `git branch --show-current` or null.
 5. Extract `started_at` from first JSONL entry.
 6. Extract `last_exchange` from last user + assistant JSONL entries.
 7. Create the active entry (schema above) with this skill in `skills_used`.
-8. Write manifest. Proceed to main skill process. No output about check-in.
+8. Write manifest.
+9. **Pre-allocate the active archive dir:** `mkdir -p $SESSION_KIT_ROOT/sessions/<project>/<session-id>-active/`. If this fails, fail loudly.
+10. **Create the ledger** at `<active-dir>/.session-artifacts.json` with the initial content shown above (empty `artifacts: []`). If a ledger already exists at this path, leave it alone (idempotent — see below).
+11. Proceed to main skill process. No output about check-in.
 
 ### Update (entry with this `session_id` already exists)
 
 1. Update `last_activity` to current ISO-8601 timestamp.
 2. Update `last_exchange` from JSONL.
 3. Append this skill name to `skills_used` (no duplicates).
-4. Write manifest. Proceed to main skill process. No output about check-in.
+4. Write manifest.
+5. **Re-verify active dir + ledger.** If either is missing (manifest entry exists but archive prep didn't complete previously, e.g., crashed between steps 8 and 10), run the pre-allocation steps from Initial Registration. `mkdir -p` is idempotent; ledger creation is a "create if missing" no-op when present.
+6. Proceed to main skill process. No output about check-in.
 
 ## Chain Propagation
 
@@ -176,15 +220,19 @@ Same as park label resolution — first match wins:
 
 The first `/park` in a chain names it. Subsequent sessions inherit.
 
-## Graceful Degradation
+## Failure Modes
 
 | Failure | Behavior |
 |---------|----------|
-| Session ID detection fails | Skip check-in, skill proceeds normally |
-| Manifest read fails | Back up as `.bak`, create fresh, register |
-| JSONL read fails (timestamps/exchange) | Use current time for `started_at`, null for `last_exchange` |
-| Chain metadata missing from relay | Start new chain (null chain fields) |
-| Checkpoint metadata missing from relay | Normal chain (null parent_chain_id, null checkpoint_nodes) |
+| Session ID detection fails (both .jsonl + git-root) | **Fail loudly.** Refuse to proceed; surface message from [write-artifact-protocol.md](write-artifact-protocol.md). |
+| Active dir `mkdir -p` fails | **Fail loudly.** Durable-first protocol cannot run without it. |
+| Ledger creation fails | **Fail loudly.** Same reason. |
+| Manifest read fails | Back up as `.bak`, create fresh, register. |
+| JSONL read fails (timestamps/exchange) | Use current time for `started_at`, null for `last_exchange`. |
+| Chain metadata missing from relay | Start new chain (null chain fields). |
+| Checkpoint metadata missing from relay | Normal chain (null parent_chain_id, null checkpoint_nodes). |
+
+The shift from "graceful degradation" to "fail loudly" on the first three rows is deliberate: lazy-archive could afford best-effort check-in because artifacts went to cwd regardless. Durable-first cannot — if check-in fails, the artifact has nowhere to land.
 
 ## Skills That Check In
 
