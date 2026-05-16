@@ -20,9 +20,19 @@ Ensure the current session is registered in `$SESSION_KIT_ROOT/manifest.json` wi
 
 **How to distinguish:** if the immediate trigger is a user typing `/checkin`, use explicit mode. If another skill's prose says "invoke `/checkin` (silent) as a precondition" or equivalent, use silent mode. Both modes execute the same protocol; the user-facing differences are exactly the two columns above.
 
+## Execution Discipline
+
+**The entire ceremony — resolution + scaffolding + manifest update + output — MUST run inside a single bash invocation.** Claude Code's `Bash` tool spawns a fresh shell for each call; variables set in one call (`SESSION_ID`, `ACTIVE_DIR`, `SESSION_FILE`, `NOW`, etc.) are gone in the next. Splitting the protocol across multiple `Bash` calls is the most common way this skill regresses — half-empty paths get `mkdir`'d, ledgers get created with the wrong `session_id`, mirrors copy from nonexistent sources.
+
+The Process section below describes the steps as prose for clarity. The canonical implementation is the single bash block in [Reference Implementation](#reference-implementation) at the end of this skill; treat it as the executable specification. If you must improvise, bundle every shell step into one heredoc.
+
+**Cross-platform note.** Pin every `date` invocation to `+"%Y-%m-%dT%H:%M:%SZ"` (no `%N` / no sub-second). BSD `date` on macOS does not understand `%N`; a format string like `+"%Y-%m-%dT%H:%M:%S.%3NZ"` produces literal `%3N` in the output. Drop sub-second precision.
+
 ## Session ID Resolution
 
 Three-tier resolution chain — first tier to produce a non-empty `SESSION_ID` wins. All tiers are graceful; a missing tier falls through to the next. **Resolution failure is not a hard gate.**
+
+> **Illustrative only.** The snippet below shows just the resolution step in isolation, for clarity. **Do not** run it as a standalone bash invocation — see [Execution Discipline](#execution-discipline). The integrated implementation is in [Reference Implementation](#reference-implementation).
 
 ```bash
 # --- Tier 1: cwd-encoded JSONL ---
@@ -74,6 +84,8 @@ fi
 `.stoobz/` is gitignored by convention, so the cache file does not pollute repos.
 
 ## Process
+
+The prose below describes the same ceremony as [Reference Implementation](#reference-implementation), step by step. Treat the bash block as the canonical implementation; the prose is for orientation.
 
 After resolving `SESSION_ID`:
 
@@ -149,9 +161,21 @@ For tier-3 sessions: `return_to` is `null`, `last_exchange` is `null`, `started_
 
 ### Timestamp / exchange extraction (tier-1 and tier-2 only)
 
+**Pinned JSONL path.** All extraction MUST read from the specific session-scoped file:
+
+```
+$SESSION_FILE = $HOME/.claude/projects/$ENCODED/${SESSION_ID}.jsonl
+```
+
+Never glob `~/.claude/projects/$ENCODED/*.jsonl` for extraction — that can pick up an old or unrelated session's entries (a recent smoke test surfaced a 12-day-old exchange that way). The `SESSION_ID` already names the exact file the resolution chain located.
+
+For tier-3 sessions `$SESSION_FILE` is unset; skip extraction (`started_at` ← `$NOW`, `last_exchange` ← `null`).
+
+**Timestamp format.** Every ISO-8601 stamp uses `date -u +"%Y-%m-%dT%H:%M:%SZ"` — second precision, UTC, `Z` suffix. No `%N`, no sub-second. BSD `date` (macOS default) does not implement `%N` and silently emits the literal characters.
+
 **`started_at`:** First JSONL entry's `timestamp` field via `head -1 "$SESSION_FILE"` and parse. Write once; never updated.
 
-**`last_exchange`:** Scan **backward** through the JSONL for the most recent **real** user entry and the most recent assistant entry. Truncate text at 80 chars, append `...` if truncated.
+**`last_exchange`:** Scan **backward** through `$SESSION_FILE` for the most recent **real** user entry and the most recent assistant entry. Truncate text at 80 chars, append `...` if truncated.
 
 A "real" user entry is one that matches **all** of:
 
@@ -288,3 +312,206 @@ All artifact-producing session-kit skills, as a silent precondition. Currently:
 - Re-invocation is **scaffolding-idempotent**: active dir and ledger are create-if-missing only; ledger write-once metadata and `artifacts[]` are never touched. But the manifest's liveness fields (`last_activity`, `last_exchange`) are refreshed every call. Re-entry message stays a clean `Already checked in: <session-id>`.
 - `skills_used` append rule is mode-dependent: explicit mode appends `"checkin"`, silent mode does not.
 - Silent mode emits no console output on success or re-entry; it emits the abort error only when durability fails. Explicit mode emits the success-on-first-run or re-entry message.
+- All shell work happens in a single `Bash` invocation. See [Execution Discipline](#execution-discipline) and [Reference Implementation](#reference-implementation).
+- Timestamps use `date -u +"%Y-%m-%dT%H:%M:%SZ"` (no `%N`). Last-exchange extraction reads only `$HOME/.claude/projects/$ENCODED/${SESSION_ID}.jsonl` — never a glob.
+
+## Reference Implementation
+
+The canonical implementation of the full ceremony. Run as a single `Bash` tool invocation. `MODE` is `"explicit"` when the user typed `/checkin`, `"silent"` when called from another skill's boilerplate.
+
+```bash
+#!/usr/bin/env bash
+# /checkin — durable-first session registration + scaffolding + liveness refresh.
+# MUST run as a single bash invocation; shell vars do not persist across calls.
+
+set -euo pipefail
+MODE="${MODE:-silent}"  # "explicit" or "silent"
+SESSION_KIT_ROOT="${SESSION_KIT_ROOT:-$HOME/.stoobz}"
+NOW="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+CWD="$(pwd)"
+
+# === Tier resolution ===
+ENCODED="$(echo "$CWD" | tr '/' '-')"
+SESSION_ID=""
+SESSION_FILE=""
+RESOLVED_VIA=""
+
+# Tier 1: cwd-encoded
+CANDIDATE="$(ls -t "$HOME/.claude/projects/${ENCODED}"/*.jsonl 2>/dev/null | head -1 || true)"
+if [ -n "$CANDIDATE" ]; then
+  SESSION_ID="$(basename "$CANDIDATE" .jsonl)"
+  SESSION_FILE="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"
+  RESOLVED_VIA="jsonl"
+fi
+
+# Tier 2: git-root-encoded
+if [ -z "$SESSION_ID" ]; then
+  GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  if [ -n "$GIT_ROOT" ]; then
+    ENCODED="$(echo "$GIT_ROOT" | tr '/' '-')"
+    CANDIDATE="$(ls -t "$HOME/.claude/projects/${ENCODED}"/*.jsonl 2>/dev/null | head -1 || true)"
+    if [ -n "$CANDIDATE" ]; then
+      SESSION_ID="$(basename "$CANDIDATE" .jsonl)"
+      SESSION_FILE="$HOME/.claude/projects/${ENCODED}/${SESSION_ID}.jsonl"
+      RESOLVED_VIA="git-root"
+    fi
+  fi
+fi
+
+# Tier 3: cached UUID, else synthesize
+if [ -z "$SESSION_ID" ]; then
+  mkdir -p "$CWD/.stoobz"
+  CACHE="$CWD/.stoobz/.session-id"
+  if [ -f "$CACHE" ]; then
+    SESSION_ID="$(tr -d '[:space:]' < "$CACHE")"
+    RESOLVED_VIA="cached"
+  fi
+  if [ -z "$SESSION_ID" ]; then
+    SESSION_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+    printf '%s\n' "$SESSION_ID" > "$CACHE"
+    RESOLVED_VIA="synthesized"
+  fi
+fi
+
+# === Derived paths ===
+PROJECT="$(basename "$(git rev-parse --show-toplevel 2>/dev/null || echo "$CWD")")"
+ACTIVE_DIR="$SESSION_KIT_ROOT/sessions/$PROJECT/${SESSION_ID}-active"
+LEDGER="$ACTIVE_DIR/.session-artifacts.json"
+MANIFEST="$SESSION_KIT_ROOT/manifest.json"
+
+# === Hard gate: scaffolding ===
+mkdir -p "$SESSION_KIT_ROOT"
+[ -f "$MANIFEST" ] || echo '{"sessions": []}' > "$MANIFEST"
+
+if ! mkdir -p "$ACTIVE_DIR" 2>/tmp/sk-mkdir.err; then
+  echo "abort: mkdir failed at $ACTIVE_DIR: $(cat /tmp/sk-mkdir.err)" >&2
+  exit 1
+fi
+
+if [ ! -f "$LEDGER" ]; then
+  # Pull started_at from JSONL if available; else NOW.
+  STARTED_AT="$NOW"
+  if [ -n "$SESSION_FILE" ] && [ -f "$SESSION_FILE" ]; then
+    FIRST_TS="$(head -1 "$SESSION_FILE" | jq -r '.timestamp // empty' 2>/dev/null || true)"
+    [ -n "$FIRST_TS" ] && STARTED_AT="$FIRST_TS"
+  fi
+  if ! jq -n --arg sid "$SESSION_ID" --arg sa "$STARTED_AT" --arg src "$CWD" '
+    {schema_version: 1, session_id: $sid, started_at: $sa, source_dir: $src, artifacts: []}
+  ' > "$LEDGER" 2>/tmp/sk-ledger.err; then
+    echo "abort: ledger creation failed at $LEDGER: $(cat /tmp/sk-ledger.err)" >&2
+    exit 1
+  fi
+fi
+
+# === Extract last_exchange (tier-1/2 only) ===
+LAST_EXCHANGE='null'
+if [ -n "$SESSION_FILE" ] && [ -f "$SESSION_FILE" ]; then
+  LAST_EXCHANGE="$(jq -s --arg now "$NOW" '
+    # Real user entries: user role, not isMeta, not isSidechain, content is string or text-array
+    def real_user: .type == "user"
+      and (.isMeta // false) != true
+      and (.isSidechain // false) != true
+      and ((.message.content | type) == "string"
+           or ((.message.content | type) == "array" and (.message.content[0].type // "") == "text"));
+    def text_of_user: if (.message.content | type) == "string"
+                       then .message.content
+                       else (.message.content[0].text // "") end;
+    def trunc: if (length > 80) then (.[0:80] + "...") else . end;
+
+    (map(select(real_user)) | last) as $u
+    | (map(select(.type == "assistant")) | last) as $a
+    | if ($u == null and $a == null) then null
+      else {
+        user: (if $u == null then null else {
+                 text: ($u | text_of_user | trunc),
+                 timestamp: ($u.timestamp // null)
+               } end),
+        assistant: (if $a == null then null else {
+                      text: ($a.message.content[0].text // "" | trunc),
+                      timestamp: ($a.timestamp // null)
+                    } end)
+      }
+      end
+  ' "$SESSION_FILE" 2>/dev/null || echo null)"
+fi
+
+# === Determine first-checkin vs re-entry ===
+IS_FIRST="$(jq --arg sid "$SESSION_ID" '
+  [.sessions[] | select(.session_id == $sid)] | length == 0
+' "$MANIFEST")"
+
+# === Branch project name and branch for first-checkin path ===
+BRANCH="$(git branch --show-current 2>/dev/null || true)"
+[ -z "$BRANCH" ] && BRANCH=null || BRANCH="\"$BRANCH\""
+
+# === Compute return_to ===
+if [ "$RESOLVED_VIA" = "jsonl" ] || [ "$RESOLVED_VIA" = "git-root" ]; then
+  RETURN_TO="cd $(echo "$CWD" | sed "s|^$HOME|~|") && claude --resume $SESSION_ID"
+  RETURN_TO_JSON="\"$RETURN_TO\""
+else
+  RETURN_TO_JSON=null
+fi
+
+# === Update manifest ===
+# Append-or-update single entry; refresh liveness; conditional skills_used append.
+APPEND_SKILL=""
+if [ "$MODE" = "explicit" ]; then
+  APPEND_SKILL="checkin"
+fi
+
+TMP_MANIFEST="$(mktemp)"
+jq \
+  --arg sid "$SESSION_ID" \
+  --arg now "$NOW" \
+  --arg project "$PROJECT" \
+  --arg src "$CWD" \
+  --arg active_dir "$ACTIVE_DIR" \
+  --arg resolved_via "$RESOLVED_VIA" \
+  --arg append_skill "$APPEND_SKILL" \
+  --argjson last_exchange "$LAST_EXCHANGE" \
+  --argjson return_to "$RETURN_TO_JSON" \
+  --argjson is_first "$IS_FIRST" \
+  '
+  def refresh_liveness:
+    .last_activity = $now
+    | (if $last_exchange != null then .last_exchange = $last_exchange else . end)
+    | (if $append_skill != "" then .skills_used = ((.skills_used // []) + [$append_skill] | unique) else . end);
+
+  if $is_first then
+    .sessions += [{
+      id: $sid, project: $project, date: ($now[0:10]),
+      label: null, summary: null,
+      source_dir: $src, archive_path: null, branch: null,
+      artifacts: [], tags: [], type: "session",
+      status: "active", session_id: $sid, return_to: $return_to,
+      chain_id: null, chain_position: null, previous_session_id: null,
+      parent_chain_id: null, checkpoint_nodes: null,
+      started_at: $now,
+      last_activity: $now,
+      last_exchange: $last_exchange,
+      skills_used: (if $append_skill != "" then [$append_skill] else [] end)
+    }]
+  else
+    .sessions = (.sessions | map(if .session_id == $sid then refresh_liveness else . end))
+  end
+  ' "$MANIFEST" > "$TMP_MANIFEST" && mv "$TMP_MANIFEST" "$MANIFEST"
+
+# === Output ===
+if [ "$MODE" = "explicit" ]; then
+  if [ "$IS_FIRST" = "true" ]; then
+    echo "Session checked in: $SESSION_ID → $ACTIVE_DIR; ledger initialized (resolved via $RESOLVED_VIA)"
+  else
+    echo "Already checked in: $SESSION_ID"
+  fi
+fi
+
+# Export for downstream skill bundling (when /checkin is invoked inline as part of another skill's bash block, these are already in scope).
+export SESSION_ID SESSION_FILE RESOLVED_VIA ACTIVE_DIR LEDGER MANIFEST PROJECT NOW
+```
+
+A skill invoking `/checkin` silently as a precondition can either:
+
+1. Invoke this entire block via the `Skill` tool (separate bash process; only the manifest/scaffolding side-effects persist), then re-derive `ACTIVE_DIR` etc. at the start of its own bash block; OR
+2. Inline this block at the top of its own bundled bash invocation, then continue with the artifact write — the exported variables stay in scope.
+
+Approach (2) is preferred for skills that need `$ACTIVE_DIR` for the write step (essentially all of them — see [tldr/SKILL.md](../tldr/SKILL.md) for a worked example).
