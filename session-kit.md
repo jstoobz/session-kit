@@ -58,7 +58,7 @@ Session Kit registers active sessions in the manifest on first skill use. This m
 - `/park` → upgrades entry to `"archived"` with full metadata
 - Entries without `status` field → treated as `"archived"` (backward compatible)
 
-See [session-checkin.md](session-checkin.md) for the full protocol including session ID detection, chain propagation, and graceful degradation.
+See [checkin/SKILL.md](checkin/SKILL.md) for the full protocol including session ID detection, chain propagation, and graceful degradation.
 
 ### Session Chains
 

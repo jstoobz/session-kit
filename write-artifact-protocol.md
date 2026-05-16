@@ -39,7 +39,7 @@ If step 4 fails: log a warning to the operator, continue. The durable write succ
 
 ## Active Archive Directory
 
-Pre-allocated at session check-in (see [session-checkin.md](session-checkin.md)):
+Pre-allocated at /checkin (see [checkin/SKILL.md](checkin/SKILL.md)):
 
 ```
 $SESSION_KIT_ROOT/sessions/<project>/<session-id>-active/
@@ -47,7 +47,7 @@ $SESSION_KIT_ROOT/sessions/<project>/<session-id>-active/
 └── <artifacts written here as the session progresses>
 ```
 
-`<session-id>` is the Claude Code session UUID (from session-checkin's detection logic).
+`<session-id>` is the Claude Code session UUID (from checkin's detection logic).
 `<project>` is `basename $(git rev-parse --show-toplevel)` or `basename $(pwd)` (same as existing manifest logic).
 
 At `/park` finalization, the dir is renamed:
@@ -88,7 +88,7 @@ At `/park` finalization, the dir is renamed:
 | Field             | Write semantics                                                                |
 |-------------------|--------------------------------------------------------------------------------|
 | `schema_version`  | Write-once at ledger init.                                                     |
-| `session_id`      | Write-once at ledger init. Matches the session-checkin session_id.             |
+| `session_id`      | Write-once at ledger init. Matches the session-id from /checkin.             |
 | `started_at`      | Write-once at ledger init. Matches the manifest entry's `started_at`.          |
 | `source_dir`      | Write-once at ledger init. Absolute path of cwd at session start.              |
 | `artifacts`       | **Append-only.** Never reorder, never rewrite past entries.                    |
@@ -121,7 +121,7 @@ Mismatched size is a warning, not a fatal — operator may have edited the artif
 
 ### Session-ID resolution
 
-Session-ID resolution **does not fail**. The three-tier chain (jsonl → git-root → cached/synthesized UUID; see [session-checkin.md § Session ID Resolution](session-checkin.md)) always produces a stable ID. Tier-3 synthesis caches the UUID in `cwd/.stoobz/.session-id` so the same scratch cwd resolves to the same session on subsequent invocations.
+Session-ID resolution **does not fail**. The three-tier chain (jsonl → git-root → cached/synthesized UUID; see [checkin/SKILL.md § Session ID Resolution](checkin/SKILL.md)) always produces a stable ID. Tier-3 synthesis caches the UUID in `cwd/.stoobz/.session-id` so the same scratch cwd resolves to the same session on subsequent invocations.
 
 This was a deliberate loosening from an earlier draft. The previous version refused to write any artifact when tiers 1+2 missed; that misidentified the durability promise. A tier-3 session in `/tmp` writes durably to `~/.stoobz/sessions/tmp/<uuid>-active/` just as reliably as a tier-1 session in a tracked git repo — the archive path is fully addressable from the resolved ID, regardless of which tier produced it. The hard gate belongs at the actual write step, not at ID resolution.
 
@@ -158,5 +158,5 @@ If a ledger entry's file is missing or size doesn't match, `/park` surfaces the 
 ## References
 
 - [ADR-0004](~/.stoobz/kb/adr/0004-session-kit-artifact-durability.md) — the *why*
-- [session-checkin.md](session-checkin.md) — active dir pre-allocation, session ID detection
+- [checkin/SKILL.md](checkin/SKILL.md) — active dir pre-allocation, session ID detection
 - [session-kit.md](session-kit.md) — overall kit architecture
