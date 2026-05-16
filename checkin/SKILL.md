@@ -205,7 +205,11 @@ Best-effort — if no matching entry exists, set the field to `null`. Not a hard
 
 | Field | Silent mode | Explicit mode |
 |-------|-------------|---------------|
-| `skills_used` | Do **not** append `"checkin"`. The invoking skill owns its own entry. | Append `"checkin"` (deduplicated). The operator deliberately invoked it. |
+| `skills_used` | Do **not** append `"checkin"`. If `INVOKING_SKILL` is set in the environment, append that value (deduplicated). | Append `"checkin"` (deduplicated). The operator deliberately invoked it. |
+
+**`INVOKING_SKILL` env-var contract.** A session-kit skill that invokes `/checkin` as a silent precondition exports `INVOKING_SKILL=<its frontmatter name>` first. `/checkin` reads that variable and records it in `skills_used` on the invoking skill's behalf. This centralizes manifest writes in `/checkin` — no other skill rewrites `skills_used`. Example: `/tldr` sets `INVOKING_SKILL=tldr`; `/relay` sets `INVOKING_SKILL=relay`; etc.
+
+If both `MODE=explicit` and `INVOKING_SKILL=foo` are set (unusual, e.g. user types `/checkin` from inside another skill's flow), `/checkin` appends `"checkin"` only; `INVOKING_SKILL` is ignored. Explicit user invocation takes precedence.
 
 ### Never touched on re-entry
 
@@ -454,9 +458,12 @@ fi
 
 # === Update manifest ===
 # Append-or-update single entry; refresh liveness; conditional skills_used append.
+# Precedence: MODE=explicit → "checkin"; else INVOKING_SKILL if set; else no append.
 APPEND_SKILL=""
 if [ "$MODE" = "explicit" ]; then
   APPEND_SKILL="checkin"
+elif [ -n "${INVOKING_SKILL:-}" ]; then
+  APPEND_SKILL="$INVOKING_SKILL"
 fi
 
 TMP_MANIFEST="$(mktemp)"

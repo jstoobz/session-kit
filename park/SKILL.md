@@ -11,11 +11,11 @@ Generate all session artifacts, archive them to `~/.stoobz/sessions/`, and clean
 
 ## Check-In (precondition)
 
-Before the Process section runs, invoke `/checkin` in **silent mode** as a precondition. See [checkin/SKILL.md](../checkin/SKILL.md) for the full protocol (three-tier session-ID resolution, active-dir + ledger creation, strict idempotency).
+Before the Process section runs, invoke `/checkin` in **silent mode** as a precondition. Export `INVOKING_SKILL=park` first so `/checkin` records this skill in the session's `skills_used` on its behalf. See [checkin/SKILL.md](../checkin/SKILL.md) for the protocol details (three-tier session-ID resolution, active-dir + ledger creation, scaffolding-idempotent re-entry with liveness refresh).
 
 If `/checkin` aborts (mkdir or ledger creation failure — the only durability conditions that fail loudly), this skill aborts too. Do not proceed to the Process section. Do not write any artifact.
 
-If `/checkin` succeeds or no-ops, proceed silently to the Process section. No output about check-in.
+The canonical pattern: inline `/checkin`'s Reference Implementation at the top of this skill's single bash invocation (shell variables — `SESSION_ID`, `ACTIVE_DIR`, `LEDGER`, `NOW` — must stay in scope for any artifact write that follows). All shell work in this skill MUST run in one `Bash` tool invocation; see [checkin/SKILL.md § Execution Discipline](../checkin/SKILL.md#execution-discipline).
 
 ## Process
 
