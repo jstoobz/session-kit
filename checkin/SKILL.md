@@ -11,14 +11,14 @@ Ensure the current session is registered in `$SESSION_KIT_ROOT/manifest.json` wi
 
 ## Two Modes
 
-`/checkin` has the same ceremony in both modes; only the output differs.
+`/checkin` runs the same scaffolding + liveness-refresh ceremony in both modes. Two things differ: console output, and whether `"checkin"` is appended to `skills_used`.
 
-| Mode | Trigger | Output on success | Output on no-op | Output on durability failure |
-|------|---------|-------------------|------------------|------------------------------|
-| **Explicit** | User invokes `/checkin` (slash-command) | `Session checked in: <session-id> → <archive-path>; ledger initialized (resolved via <tier>)` | `Already checked in: <session-id>` | Abort with error message |
-| **Silent** | Another session-kit skill invokes as a precondition | None | None | Abort the calling skill with error message |
+| Mode | Trigger | Output on first check-in | Output on re-entry | Output on durability failure | Appends `"checkin"` to `skills_used`? |
+|------|---------|--------------------------|---------------------|------------------------------|----------------------------------------|
+| **Explicit** | User invokes `/checkin` (slash-command) | `Session checked in: <session-id> → <archive-path>; ledger initialized (resolved via <tier>)` | `Already checked in: <session-id>` | Abort with error message | **Yes** — operator deliberately ran the skill |
+| **Silent** | Another session-kit skill invokes as a precondition | None | None | Abort the calling skill with error message | **No** — the invoking skill owns its own entry |
 
-**How to distinguish:** if the immediate trigger is a user typing `/checkin`, use explicit mode. If another skill's prose says "first invoke checkin (silent)" or equivalent, use silent mode. Both modes execute the same protocol.
+**How to distinguish:** if the immediate trigger is a user typing `/checkin`, use explicit mode. If another skill's prose says "invoke `/checkin` (silent) as a precondition" or equivalent, use silent mode. Both modes execute the same protocol; the user-facing differences are exactly the two columns above.
 
 ## Session ID Resolution
 
@@ -79,13 +79,21 @@ After resolving `SESSION_ID`:
 
 1. Read `$SESSION_KIT_ROOT/manifest.json` (create with `{"sessions": []}` if missing).
 2. Compute `ACTIVE_DIR = $SESSION_KIT_ROOT/sessions/<project>/<session-id>-active/` where `<project>` is `basename $(git rev-parse --show-toplevel)` or `basename $(pwd)` (e.g. `tmp` for `/tmp`).
-3. **Check idempotency:** if a manifest entry with `session_id == $SESSION_ID` already exists AND `ACTIVE_DIR` exists AND `$ACTIVE_DIR/.session-artifacts.json` exists → emit the no-op message for the current mode and return. Do not touch the manifest. Do not touch the ledger.
-4. Otherwise, **create the durable scaffolding:**
+3. **Determine entry state.** Let `is_first_checkin = true` if any of these is missing for the resolved `SESSION_ID`: a manifest entry, `ACTIVE_DIR`, `$ACTIVE_DIR/.session-artifacts.json`. Otherwise `is_first_checkin = false` (re-entry).
+4. **Ensure durable scaffolding** (always run; the underlying ops are create-if-missing and idempotent):
    - `mkdir -p $ACTIVE_DIR`. If this fails, abort with a durability-failure error (see Failure Modes).
-   - If `$ACTIVE_DIR/.session-artifacts.json` does not exist, create it with the initial ledger content shown below. If creation fails, abort with a durability-failure error.
-5. If no manifest entry exists for this `SESSION_ID`, create one (schema below). Fill `started_at` and `last_exchange` from the JSONL when available (tier 1 / tier 2); fall back to current time and `null` respectively for tier-3 sessions.
-6. Write the manifest.
-7. Emit the success message for the current mode.
+   - If `$ACTIVE_DIR/.session-artifacts.json` does not exist, create it with the initial ledger content shown below. If creation fails, abort with a durability-failure error. **Never** rewrite or modify an existing ledger.
+5. **Update the manifest entry:**
+   - **First check-in:** create the entry (schema below). Fill `started_at` and `last_exchange` from the JSONL when available (tier 1 / tier 2); fall back to current time and `null` respectively for tier-3 sessions. Set `last_activity` to the current ISO-8601 UTC timestamp. Initialize `skills_used` per the rule in step 6.
+   - **Re-entry:** refresh liveness on the existing entry. Set `last_activity` to the current ISO-8601 UTC timestamp. If `last_exchange` extraction yields a non-null value, overwrite the existing `last_exchange`; if it yields null (tier-3, or no real user entry yet), leave the existing value untouched. **Never** rewrite `started_at`, `session_id`, `source_dir`, or `id`.
+6. **Append to `skills_used`** (no duplicates):
+   - **Silent mode** (invoked as precondition by another skill): do **not** append `"checkin"`. The invoking skill is responsible for its own `skills_used` entry; check-in is a precondition, not a user-facing step.
+   - **Explicit mode** (user typed `/checkin` directly): append `"checkin"`. The operator deliberately ran it as a skill; that's a real entry in the session's skill history.
+7. Write the manifest.
+8. Emit the appropriate message for the current mode:
+   - First check-in, explicit: `Session checked in: <session-id> → <archive-path>; ledger initialized (resolved via <tier>)`
+   - Re-entry, explicit: `Already checked in: <session-id>`
+   - Silent (either branch): no output.
 
 ### Initial ledger content
 
@@ -158,13 +166,34 @@ The most recent assistant entry is `.type == "assistant"` with `.message.content
 
 Best-effort — if no matching entry exists, set the field to `null`. Not a hard-gate condition.
 
-## Strict Idempotency
+## Scaffolding Idempotency, Liveness Refresh
 
-Once the manifest entry, active dir, and ledger all exist for the resolved `SESSION_ID`, `/checkin` is a **pure no-op** — no manifest writes, no ledger touches, no timestamp refreshes, no `skills_used` accumulation.
+`/checkin` is **scaffolding-idempotent** — it never re-creates or modifies the durable infrastructure once it exists. But it **refreshes liveness** on every invocation, so the manifest stays accurate as a "what's happening now" picture.
 
-This is a deliberate v1 simplification. The previous protocol had two branches (Initial Registration vs Update) where re-invocation refreshed `last_activity`, `last_exchange`, and `skills_used`. The new `/checkin` is responsible only for the *existence* of the durable scaffolding — once it's there, there's nothing more for `/checkin` to do.
+### Refresh on every check-in (silent or explicit)
 
-**Consequence:** `last_activity` reflects the time of first check-in, not the latest skill invocation. `skills_used` lists only the skill that triggered the first check-in. Live-activity tracking is descoped; if it returns it will be via a separate primitive (e.g. a `/touch` skill or a hook).
+| Field | When refreshed |
+|-------|----------------|
+| `last_activity` | **Always.** Set to current ISO-8601 UTC. |
+| `last_exchange` | **When extraction yields a value.** Tier-3 sessions and sessions with no real user entry yet leave the existing value untouched (null on first check-in; null or stale on re-entry). |
+
+### Append on every check-in, mode-dependent
+
+| Field | Silent mode | Explicit mode |
+|-------|-------------|---------------|
+| `skills_used` | Do **not** append `"checkin"`. The invoking skill owns its own entry. | Append `"checkin"` (deduplicated). The operator deliberately invoked it. |
+
+### Never touched on re-entry
+
+These are write-once or owned by other actors:
+
+- **Active dir** (`mkdir -p` only — no recursion, no chmod, no reset)
+- **Ledger file** (`.session-artifacts.json` — create-if-missing only)
+- **Ledger write-once metadata:** `schema_version`, `session_id`, `started_at`, `source_dir`
+- **Ledger `artifacts[]` array:** owned exclusively by artifact-writing skills under [write-artifact-protocol.md](../write-artifact-protocol.md)
+- **Manifest write-once fields:** `id`, `session_id`, `started_at`, `source_dir`, `project`, `date`, chain metadata (managed by `/park` / `/pickup` / `/checkpoint`)
+
+The re-entry user-facing message stays a clean `Already checked in: <session-id>`. The liveness refresh happens underneath — visible only to readers of the manifest (e.g. `/index --active`).
 
 ## Failure Modes
 
@@ -256,5 +285,6 @@ All artifact-producing session-kit skills, as a silent precondition. Currently:
 - Resolution chain order is fixed: tier 1 → 2 → 3. Higher tiers take precedence; tier-3 is consulted only as last resort.
 - Tier-3 cache (`cwd/.stoobz/.session-id`) is one UUID per cwd. If you delete it, the next `/checkin` synthesizes a new UUID and creates a new manifest entry — the previous tier-3 session becomes an orphan in the archive.
 - The only conditions that abort the skill are active-dir `mkdir` failure and ledger creation failure.
-- Idempotent re-invocation is a **pure no-op**: no manifest write, no ledger touch, no timestamp refresh. Two messages: success-on-first-run, no-op-on-re-run.
-- Silent mode emits no output on success or no-op; it emits the abort error only when durability fails. Explicit mode emits the success or no-op message.
+- Re-invocation is **scaffolding-idempotent**: active dir and ledger are create-if-missing only; ledger write-once metadata and `artifacts[]` are never touched. But the manifest's liveness fields (`last_activity`, `last_exchange`) are refreshed every call. Re-entry message stays a clean `Already checked in: <session-id>`.
+- `skills_used` append rule is mode-dependent: explicit mode appends `"checkin"`, silent mode does not.
+- Silent mode emits no console output on success or re-entry; it emits the abort error only when durability fails. Explicit mode emits the success-on-first-run or re-entry message.
