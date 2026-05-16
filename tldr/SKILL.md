@@ -23,10 +23,14 @@ On first invocation of any session-kit skill in this session, register the activ
 
 ## Process
 
-1. **Check for existing file** — Read `./.stoobz/TLDR.md` if it exists. If found:
+This skill writes its artifact under the **durable-first protocol**. See [write-artifact-protocol.md](../write-artifact-protocol.md) for the full contract; the abbreviated steps for `tldr` are below.
+
+Let `ACTIVE_DIR = $SESSION_KIT_ROOT/sessions/<project>/<session-id>-active/` (pre-allocated by check-in).
+
+1. **Check for existing file at the canonical location** — Read `$ACTIVE_DIR/TLDR.md` if it exists (this is the durable copy; cwd is a mirror). If found:
    - Preserve previous content under a `## Previous Session` heading
    - Add new content as the primary (top) section with updated timestamp
-   - This creates a rolling history — latest session first
+   - This creates a rolling history — latest first
 
 2. Review the full conversation to extract:
    - **What was investigated/built** — the problem or task
@@ -35,9 +39,28 @@ On first invocation of any session-kit skill in this session, register the activ
    - **Actions taken** — code changes, config updates, commands run
    - **Open items** — unresolved questions, next steps, follow-ups
 
-3. Write `.stoobz/TLDR.md` in the current working directory using the format below.
+3. **Durable write** — Write the new content to `$ACTIVE_DIR/TLDR.md`. Then verify: the file exists and `size > 0`. If verification fails, treat this as a write failure; abort and surface the error.
 
-4. Confirm the file path and offer to adjust if needed.
+4. **Append ledger entry** — Append to `$ACTIVE_DIR/.session-artifacts.json` under `artifacts`:
+   ```json
+   {
+     "name": "TLDR.md",
+     "written_at": "<iso8601-utc-now>",
+     "skill": "tldr",
+     "size_bytes": <bytes-written>
+   }
+   ```
+   This append is the system-of-record signal that the artifact exists. If the ledger write fails, the artifact is in an inconsistent state — abort and surface the error so the operator can investigate.
+
+5. **Mirror to cwd (best-effort)** — Copy `$ACTIVE_DIR/TLDR.md` to `./.stoobz/TLDR.md` (mkdir -p the parent first). If the mirror fails (permissions, no disk, etc.), log a warning to the operator in the format from [write-artifact-protocol.md § Mirror failure](../write-artifact-protocol.md):
+   ```
+   warn: cwd mirror failed for TLDR.md: <error>
+         Durable write succeeded at <archive-path>.
+         The artifact is preserved; only the working-dir copy is missing.
+   ```
+   The skill continues — the durable write is canonical.
+
+6. Confirm to the operator: the archive path, the cwd path (or mirror-warning), and offer to adjust if needed.
 
 ## Output Format
 
@@ -87,4 +110,5 @@ _Generated from Claude Code session — see full conversation for details._
 - **Skip sections with no content** — if no decisions were made, omit the Decisions table
 - **No jargon expansion** — engineers reading this know the stack; don't explain what Oban or Ecto are
 - **One file, flat structure** — no subdirectories, no companion files
-- Write to `./.stoobz/TLDR.md` in the current working directory unless the user specifies a different path
+- The canonical write location is `$ACTIVE_DIR/TLDR.md`; cwd `.stoobz/TLDR.md` is a best-effort mirror, not the source of truth
+- The ledger entry's `name` is `TLDR.md` (no leading path; the artifact lives at the archive root)
