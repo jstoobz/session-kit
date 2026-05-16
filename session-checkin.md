@@ -14,41 +14,63 @@ Subsequent invocations → update last_activity, last_exchange, skills_used (ide
 
 Entries without a `status` field are treated as `"archived"` (backward compatible with existing manifest entries).
 
-## Session ID Detection
+## Session ID Resolution
 
-The current session's `.jsonl` is the most recently modified file in its project directory:
+Three-tier resolution chain — first tier to produce a non-empty `SESSION_ID` wins. All tiers are graceful; a missing tier falls through to the next. **Resolution failure is not a hard gate.**
 
 ```bash
-# Encode cwd to match Claude Code's project dir naming (/ → -)
+# --- Tier 1: cwd-encoded JSONL ---
 ENCODED="$(echo "$(pwd)" | tr '/' '-')"
-
-# Most recently modified .jsonl = active session
 SESSION_FILE="$(ls -t "$HOME/.claude/projects/${ENCODED}"/*.jsonl 2>/dev/null | head -1)"
 SESSION_ID="$(basename "$SESSION_FILE" .jsonl 2>/dev/null)"
+RESOLVED_VIA="jsonl"
 
-# Fallback: try git root encoding
+# --- Tier 2: git-root-encoded JSONL ---
 if [ -z "$SESSION_ID" ]; then
   GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
   if [ -n "$GIT_ROOT" ]; then
     ENCODED="$(echo "$GIT_ROOT" | tr '/' '-')"
     SESSION_FILE="$(ls -t "$HOME/.claude/projects/${ENCODED}"/*.jsonl 2>/dev/null | head -1)"
     SESSION_ID="$(basename "$SESSION_FILE" .jsonl 2>/dev/null)"
+    [ -n "$SESSION_ID" ] && RESOLVED_VIA="git-root"
   fi
 fi
 
-# Build return_to with ~ for readability
-RETURN_TO="cd $(pwd | sed "s|^$HOME|~|") && claude --resume $SESSION_ID"
+# --- Tier 3: cached or synthesized UUID in cwd/.stoobz/.session-id ---
+if [ -z "$SESSION_ID" ]; then
+  CACHE_FILE="./.stoobz/.session-id"
+  if [ -f "$CACHE_FILE" ]; then
+    SESSION_ID="$(cat "$CACHE_FILE" | tr -d '[:space:]')"
+    RESOLVED_VIA="cached"
+  fi
+  if [ -z "$SESSION_ID" ]; then
+    mkdir -p ./.stoobz
+    SESSION_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+    printf '%s\n' "$SESSION_ID" > "$CACHE_FILE"
+    RESOLVED_VIA="synthesized"
+  fi
+fi
+
+# Build return_to with ~ for readability (omit for tier-3 sessions — there is no resume target)
+if [ "$RESOLVED_VIA" = "jsonl" ] || [ "$RESOLVED_VIA" = "git-root" ]; then
+  RETURN_TO="cd $(pwd | sed "s|^$HOME|~|") && claude --resume $SESSION_ID"
+else
+  RETURN_TO=null
+fi
 ```
 
-**Failure policy (changed from prior versions).** If both the cwd-encoded lookup and the git-root fallback fail to produce a `SESSION_ID`, **check-in MUST abort the calling skill**.
+**Tier semantics:**
 
-This is a hard gate, not an advisory:
+| Tier | Source | When it wins |
+|------|--------|--------------|
+| 1 — `jsonl` | Most recently modified `.jsonl` under `~/.claude/projects/<cwd-encoded>/` | Normal Claude Code session in any cwd Claude Code has tracked |
+| 2 — `git-root` | Same lookup but against the git repo root's encoded path | Cwd is a subdir of a git repo Claude Code has tracked at the root |
+| 3a — `cached` | Existing `cwd/.stoobz/.session-id` | Tier-3 already ran in this cwd; UUID was persisted |
+| 3b — `synthesized` | New UUID written to `cwd/.stoobz/.session-id` | Scratch cwd (e.g. `/tmp`), empty repo, or otherwise outside Claude Code's tracking |
 
-- Surface the error message from [write-artifact-protocol.md § Session-ID detection failure](write-artifact-protocol.md) to the operator.
-- **Do not** proceed to the skill's Process section. **Do not** write any artifact anywhere (not the archive, not cwd). **Do not** silently degrade.
-- The skill terminates here. The operator's only options are (a) move to a Claude-Code-tracked cwd / git repo, or (b) set `SESSION_KIT_SESSION_ID` and retry.
+**No hard gate.** Session-ID resolution always succeeds — tier 3 is a last-resort UUID synthesis with idempotent caching. A scratch cwd or empty repo is a legitimate use case; refusing to write here was wrong (prior versions). The actual durability promise is upheld by archive-dir + ledger creation (see below); if either of those fails, *then* check-in aborts.
 
-The prior "skip silently" policy was safe under lazy-archive (artifacts went to cwd regardless), but under durable-first it would mask a real failure mode — the artifact would be written to cwd only, with no archive copy and no ledger entry. That is the exact outcome ADR-0004 set out to eliminate.
+The cached `.stoobz/.session-id` file is a small text file (UUID + newline). `.stoobz/` is gitignored by convention so it does not pollute repos.
 
 ## Active Archive Directory + Ledger
 
@@ -83,7 +105,15 @@ Check-in runs on every session-kit skill invocation, but active-dir + ledger cre
 - **Active dir:** `mkdir -p` — no-op if it already exists.
 - **Ledger:** create only if missing. If a ledger already exists, leave it alone. The `session_id`, `started_at`, and `source_dir` fields are **write-once**; the `artifacts` array is **append-only** (skills append; nothing rewrites prior entries).
 
-If the active dir or ledger creation fails (permissions, disk, etc.), **check-in MUST abort the calling skill** with the same hard-gate semantics as session-ID detection failure above. Without an active dir + ledger, no artifact can be written durably; lazy fallback is not an option.
+### The only hard gate: durability failure
+
+If **`mkdir -p` of the active dir fails** OR **ledger creation fails** (permissions, disk full, read-only filesystem, etc.), check-in MUST abort the calling skill:
+
+- Surface a clear error: which operation failed, against which path, and the underlying error message.
+- **Do not** proceed to the skill's Process section. **Do not** write any artifact (not the archive, not cwd).
+- The skill terminates here. The operator's path forward is to fix `~/.stoobz/` writability or override `$SESSION_KIT_ROOT`.
+
+This is the **only** condition that aborts check-in. Session-ID resolution always succeeds (tier-3 fallback); manifest read failures recover gracefully (backup + recreate); JSONL extraction failures degrade fields to null. Fail-loud is reserved for the actual durability promise breaking — "we cannot write the artifact durably from here."
 
 ## Timestamp Extraction
 
@@ -154,16 +184,16 @@ When a session is first registered, the manifest entry looks like:
 
 ### Initial Registration (no entry with this `session_id`)
 
-1. Detect session ID using the method above. If both detection paths fail, **fail loudly** (see Failure policy above).
+1. **Resolve session ID** via the three-tier chain above. Always succeeds: tier 3 synthesizes a UUID and caches it in `cwd/.stoobz/.session-id` if tiers 1+2 miss.
 2. Read `$SESSION_KIT_ROOT/manifest.json` (create with `{"sessions": []}` if missing).
-3. Determine project name: `basename $(git rev-parse --show-toplevel)` or `basename $(pwd)`.
+3. Determine project name: `basename $(git rev-parse --show-toplevel)` or `basename $(pwd)`. For tier-3 sessions in non-repo cwds, `basename $(pwd)` (e.g. `tmp` for `/tmp`).
 4. Determine branch: `git branch --show-current` or null.
-5. Extract `started_at` from first JSONL entry.
-6. Extract `last_exchange` from last user + assistant JSONL entries.
-7. Create the active entry (schema above) with this skill in `skills_used`.
+5. Extract `started_at` from first JSONL entry. For tier-3 sessions (no JSONL), use current ISO-8601 timestamp.
+6. Extract `last_exchange` from JSONL using the filter in § Timestamp Extraction. For tier-3 sessions, set to `null`.
+7. Create the active entry (schema above) with this skill in `skills_used`. For tier-3 sessions, `return_to` is `null` (no resume target).
 8. Write manifest.
-9. **Pre-allocate the active archive dir:** `mkdir -p $SESSION_KIT_ROOT/sessions/<project>/<session-id>-active/`. If this fails, fail loudly.
-10. **Create the ledger** at `<active-dir>/.session-artifacts.json` with the initial content shown above (empty `artifacts: []`). If a ledger already exists at this path, leave it alone (idempotent — see below).
+9. **Pre-allocate the active archive dir:** `mkdir -p $SESSION_KIT_ROOT/sessions/<project>/<session-id>-active/`. **If this fails, abort the calling skill** (see § The only hard gate).
+10. **Create the ledger** at `<active-dir>/.session-artifacts.json` with the initial content shown above (empty `artifacts: []`). Create-if-missing — if a ledger already exists, leave it alone. **If creation fails, abort the calling skill.**
 11. Proceed to main skill process. No output about check-in.
 
 ### Update (entry with this `session_id` already exists)
@@ -243,15 +273,17 @@ The first `/park` in a chain names it. Subsequent sessions inherit.
 
 | Failure | Behavior |
 |---------|----------|
-| Session ID detection fails (both .jsonl + git-root) | **Fail loudly.** Refuse to proceed; surface message from [write-artifact-protocol.md](write-artifact-protocol.md). |
-| Active dir `mkdir -p` fails | **Fail loudly.** Durable-first protocol cannot run without it. |
-| Ledger creation fails | **Fail loudly.** Same reason. |
+| Tier-1 (jsonl) lookup misses | Fall through to tier 2. Not a failure. |
+| Tier-2 (git-root) lookup misses | Fall through to tier 3. Not a failure. |
+| Tier-3 cache file unreadable | Synthesize a fresh UUID, overwrite the cache. |
+| Active dir `mkdir -p` fails | **Fail loudly.** Abort the calling skill. Real durability failure. |
+| Ledger creation fails | **Fail loudly.** Abort the calling skill. Real durability failure. |
 | Manifest read fails | Back up as `.bak`, create fresh, register. |
 | JSONL read fails (timestamps/exchange) | Use current time for `started_at`, null for `last_exchange`. |
 | Chain metadata missing from relay | Start new chain (null chain fields). |
 | Checkpoint metadata missing from relay | Normal chain (null parent_chain_id, null checkpoint_nodes). |
 
-The shift from "graceful degradation" to "fail loudly" on the first three rows is deliberate: lazy-archive could afford best-effort check-in because artifacts went to cwd regardless. Durable-first cannot — if check-in fails, the artifact has nowhere to land.
+Fail-loud is reserved exclusively for the two rows that mean **"can't durably write."** Session-ID resolution is no longer a failure mode — tier-3 synthesis always produces an ID. The lazy-archive era's "skip silently" was wrong; the brief "fail loudly on any miss" was over-correction. The correct gate is the one tied to the durability promise the architecture is actually making.
 
 ## Skills That Check In
 

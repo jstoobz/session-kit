@@ -119,26 +119,15 @@ Mismatched size is a warning, not a fatal — operator may have edited the artif
 
 ## Failure Policies
 
-### Session-ID detection failure
+### Session-ID resolution
 
-Session-checkin first tries the cwd-encoded JSONL lookup, then falls back to git-root encoding (see session-checkin.md). **If both fail, no durable write is possible.**
+Session-ID resolution **does not fail**. The three-tier chain (jsonl → git-root → cached/synthesized UUID; see [session-checkin.md § Session ID Resolution](session-checkin.md)) always produces a stable ID. Tier-3 synthesis caches the UUID in `cwd/.stoobz/.session-id` so the same scratch cwd resolves to the same session on subsequent invocations.
 
-In this degenerate state, the skill MUST fail loudly with a clear message:
+This was a deliberate loosening from an earlier draft. The previous version refused to write any artifact when tiers 1+2 missed; that misidentified the durability promise. A tier-3 session in `/tmp` writes durably to `~/.stoobz/sessions/tmp/<uuid>-active/` just as reliably as a tier-1 session in a tracked git repo — the archive path is fully addressable from the resolved ID, regardless of which tier produced it. The hard gate belongs at the actual write step, not at ID resolution.
 
-```
-Cannot establish session identity (no .jsonl in ~/.claude/projects/<encoded-cwd>
-and no git root). Refusing to write artifact — durable-first cannot guarantee
-the artifact's archive location. If you're running outside Claude Code, set
-SESSION_KIT_SESSION_ID to a stable identifier and retry.
-```
+### Active dir or ledger creation failure
 
-Rejected alternatives:
-- *Synthetic ID*: creates a non-canonical session that doesn't reconcile with the manifest later.
-- *Downgrade to cwd-only*: silently violates the ADR's durable-first principle — exactly the failure mode this redesign is supposed to eliminate.
-
-### Active dir creation failure
-
-If `mkdir -p` of the active archive dir fails at check-in, check-in fails loudly. Without the directory, no skill can write. This is a precondition, not a graceful-degradation case.
+If `mkdir -p` of the active archive dir fails, OR if `.session-artifacts.json` creation fails, check-in MUST abort the calling skill. These are the **only** check-in conditions that abort. Without an active dir + ledger, no artifact can be written durably; cwd-only fallback is exactly the outcome ADR-0004 set out to eliminate.
 
 ### Mirror failure
 
