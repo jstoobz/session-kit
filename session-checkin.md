@@ -40,7 +40,13 @@ fi
 RETURN_TO="cd $(pwd | sed "s|^$HOME|~|") && claude --resume $SESSION_ID"
 ```
 
-**Failure policy (changed from prior versions).** If both the cwd-encoded lookup and the git-root fallback fail to produce a `SESSION_ID`, check-in fails loudly. The skill MUST NOT proceed to write an artifact, because the durable-first protocol cannot address an archive location without a session ID. Surface the error described in [write-artifact-protocol.md § Session-ID detection failure](write-artifact-protocol.md).
+**Failure policy (changed from prior versions).** If both the cwd-encoded lookup and the git-root fallback fail to produce a `SESSION_ID`, **check-in MUST abort the calling skill**.
+
+This is a hard gate, not an advisory:
+
+- Surface the error message from [write-artifact-protocol.md § Session-ID detection failure](write-artifact-protocol.md) to the operator.
+- **Do not** proceed to the skill's Process section. **Do not** write any artifact anywhere (not the archive, not cwd). **Do not** silently degrade.
+- The skill terminates here. The operator's only options are (a) move to a Claude-Code-tracked cwd / git repo, or (b) set `SESSION_KIT_SESSION_ID` and retry.
 
 The prior "skip silently" policy was safe under lazy-archive (artifacts went to cwd regardless), but under durable-first it would mask a real failure mode — the artifact would be written to cwd only, with no archive copy and no ledger entry. That is the exact outcome ADR-0004 set out to eliminate.
 
@@ -77,13 +83,26 @@ Check-in runs on every session-kit skill invocation, but active-dir + ledger cre
 - **Active dir:** `mkdir -p` — no-op if it already exists.
 - **Ledger:** create only if missing. If a ledger already exists, leave it alone. The `session_id`, `started_at`, and `source_dir` fields are **write-once**; the `artifacts` array is **append-only** (skills append; nothing rewrites prior entries).
 
-If the active dir or ledger creation fails (permissions, disk, etc.), check-in fails loudly. Without them, no skill can write durably.
+If the active dir or ledger creation fails (permissions, disk, etc.), **check-in MUST abort the calling skill** with the same hard-gate semantics as session-ID detection failure above. Without an active dir + ledger, no artifact can be written durably; lazy fallback is not an option.
 
 ## Timestamp Extraction
 
 **`started_at`:** Read the first JSONL entry's `timestamp` field via `head -1 "$SESSION_FILE"` and parse. Set once on initial registration, never updated.
 
-**`last_exchange`:** Read the last user + assistant entries from the `.jsonl` via `tail` + reverse parse. Truncate text at 80 chars, append `...` if truncated.
+**`last_exchange`:** Scan **backward** through the JSONL for the most recent **real** user entry and the most recent assistant entry. Truncate text at 80 chars, append `...` if truncated.
+
+A "real" user entry is one that matches **all** of:
+
+- `.type == "user"`
+- `.isMeta != true` — excludes synthetic skill-launch injections (`/foo` slash-command preambles, "Base directory for this skill: …" loads)
+- `.isSidechain != true` — excludes sub-agent and orchestration sidechains
+- `.message.content` is a **string**, OR is an **array** whose first element has `.type == "text"` — excludes tool-result arrays (`.message.content[0].type == "tool_result"`)
+
+Use the first match found scanning from the tail. The text payload is `.message.content` (string form) or `.message.content[0].text` (array form).
+
+The most recent assistant entry is `.type == "assistant"` with `.message.content[0].text` (first text block; tool-use blocks are skipped).
+
+Both extractions are best-effort — if no matching entry exists (very early in a session), set the field to `null`. This is not a hard-gate condition; the skill proceeds.
 
 ## Active Entry Schema
 

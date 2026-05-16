@@ -13,12 +13,12 @@ Generate a `CONTEXT_FOR_NEXT_SESSION.md` that enables a new Claude session to re
 
 On first invocation of any session-kit skill in this session, register the active session in the manifest. See [session-checkin.md](../session-checkin.md) for the full protocol. Summary:
 
-1. Detect session ID from most recently modified `.jsonl` in `~/.claude/projects/$(pwd | tr '/' '-')/` (fallback: git root encoding). If both paths fail, **fail loudly** (durable-first writes cannot proceed without a session ID).
+1. Detect session ID from most recently modified `.jsonl` in `~/.claude/projects/$(pwd | tr '/' '-')/` (fallback: git root encoding). **Hard gate:** if both paths fail, ABORT this skill — surface the session-ID-detection error from [write-artifact-protocol.md](../write-artifact-protocol.md), do not write any artifact (not the archive, not cwd), do not proceed to the Process section.
 2. Read `$SESSION_KIT_ROOT/manifest.json` (create if missing).
-3. If no entry with this `session_id` exists → create active registration (`status: "active"`, `session_id`, `return_to`, `started_at`, `last_activity`, `last_exchange`, `skills_used`, nulls for label/summary/archive_path).
+3. If no entry with this `session_id` exists → create active registration (`status: "active"`, `session_id`, `return_to`, `started_at`, `last_activity`, `last_exchange`, `skills_used`, nulls for label/summary/archive_path). `last_exchange` extraction must filter synthetic entries (see [session-checkin.md](../session-checkin.md) § Timestamp Extraction).
 4. If entry exists → update `last_activity`, `last_exchange`, append this skill to `skills_used`.
 5. Write manifest.
-6. **Pre-allocate the active archive dir** `$SESSION_KIT_ROOT/sessions/<project>/<session-id>-active/` (mkdir -p, idempotent) and **create the ledger** `<active-dir>/.session-artifacts.json` with `schema_version: 1` and empty `artifacts: []` (create-if-missing). See [write-artifact-protocol.md](../write-artifact-protocol.md) for the durable-first contract these enable.
+6. **Pre-allocate the active archive dir** `$SESSION_KIT_ROOT/sessions/<project>/<session-id>-active/` (mkdir -p, idempotent) and **create the ledger** `<active-dir>/.session-artifacts.json` with `schema_version: 1` and empty `artifacts: []` (create-if-missing). See [write-artifact-protocol.md](../write-artifact-protocol.md) for the durable-first contract these enable. **Hard gate:** if either fails, ABORT this skill as above.
 7. Proceed to main process. No output about check-in.
 
 ## Process
