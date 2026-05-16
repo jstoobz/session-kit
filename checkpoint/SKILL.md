@@ -9,17 +9,13 @@ Selective synthesis across chain nodes. Turns a linear chain into a DAG — carr
 
 > **Archive root:** Resolve `$SESSION_KIT_ROOT` (default: `~/.stoobz`). All `~/.stoobz/` paths below use this root.
 
-## Session Check-In (silent — before main process)
+## Check-In (precondition)
 
-On first invocation of any session-kit skill in this session, register the active session in the manifest. See [session-checkin.md](../session-checkin.md) for the full protocol. Summary:
+Before the Process section runs, invoke `/checkin` in **silent mode** as a precondition. See [checkin/SKILL.md](../checkin/SKILL.md) for the full protocol (three-tier session-ID resolution, active-dir + ledger creation, strict idempotency).
 
-1. Detect session ID from most recently modified `.jsonl` in `~/.claude/projects/$(pwd | tr '/' '-')/` (fallback: git root encoding). **Hard gate:** if both paths fail, ABORT this skill — surface the session-ID-detection error from [write-artifact-protocol.md](../write-artifact-protocol.md), do not write any artifact (not the archive, not cwd), do not proceed to the Process section.
-2. Read `$SESSION_KIT_ROOT/manifest.json` (create if missing).
-3. If no entry with this `session_id` exists → create active registration (`status: "active"`, `session_id`, `return_to`, `started_at`, `last_activity`, `last_exchange`, `skills_used`, nulls for label/summary/archive_path). `last_exchange` extraction must filter synthetic entries (see [session-checkin.md](../session-checkin.md) § Timestamp Extraction).
-4. If entry exists → update `last_activity`, `last_exchange`, append this skill to `skills_used`.
-5. Write manifest.
-6. **Pre-allocate the active archive dir** `$SESSION_KIT_ROOT/sessions/<project>/<session-id>-active/` (mkdir -p, idempotent) and **create the ledger** `<active-dir>/.session-artifacts.json` with `schema_version: 1` and empty `artifacts: []` (create-if-missing). See [write-artifact-protocol.md](../write-artifact-protocol.md) for the durable-first contract these enable. **Hard gate:** if either fails, ABORT this skill as above.
-7. Proceed to main process. No output about check-in.
+If `/checkin` aborts (mkdir or ledger creation failure — the only durability conditions that fail loudly), this skill aborts too. Do not proceed to the Process section. Do not write any artifact.
+
+If `/checkin` succeeds or no-ops, proceed silently to the Process section. No output about check-in.
 
 ## How It Fits
 
