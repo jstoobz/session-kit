@@ -20,9 +20,19 @@ cd session-kit
 ./link.sh
 ```
 
-This symlinks each skill into `~/.claude/skills/`. Restart Claude Code to pick them up.
+This symlinks each skill into `~/.claude/skills/` and the `sk` dispatcher binary into `~/.local/bin/sk`. Restart Claude Code to pick up the new skills.
+
+The `sk` binary is the backing implementation for the migrated skills (`/checkin`, `/park`, `/tldr`, `/relay`, `/hone`, `/retro`, `/handoff`, `/rca`, `/persist`) — each SKILL.md is a thin orchestrator that invokes a `sk <subcommand>`. Run `sk --help` for the full subcommand reference. `~/.local/bin` must be on your `PATH`.
+
+Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/). The `bin/sk` shebang invokes `uv run` to manage its own dependencies (typer, filelock) — no system-wide install needed.
 
 ## Skills
+
+### Registration — register the session before any artifact is written
+
+| Command | Purpose |
+|---------|---------|
+| `/checkin` | Register the current Claude Code session in `manifest.json`, pre-allocate the durable archive dir + ledger. Invoked silently as a precondition by every artifact-producing skill below. |
 
 ### Core Artifacts — generate session documents
 
@@ -41,8 +51,9 @@ This symlinks each skill into `~/.claude/skills/`. Restart Claude Code to pick t
 |---------|---------|
 | `/park` | End session — generate artifacts, archive, update manifest |
 | `/park <label>` | Park with explicit archive label (e.g., `/park PROJ-1234`) |
-| `/pickup` | Start session — load prior context, present briefing |
+| `/pickup` | Start session — load prior context, present briefing, inherit chain metadata from the relay baton |
 | `/persist <name> <tags>` | Save a reference artifact mid-session to `.stoobz/` |
+| `/checkpoint` | Synthesize selected chain nodes into a new starting point (branch chain) |
 | `/index` | Find past sessions from manifest |
 | `/index --deep <term>` | Search inside archived artifact content |
 
@@ -58,7 +69,7 @@ This symlinks each skill into `~/.claude/skills/`. Restart Claude Code to pick t
 | Command | Purpose |
 |---------|---------|
 | `/sweep` | Interactive cleanup of old Claude Code sessions from the resume picker |
-| `/park --archive-system` | Retroactive cleanup of scattered `.stoobz/` directories |
+| `/park --archive-system` | Retroactive cleanup of scattered `.stoobz/` directories (pending re-migration; see `park/SKILL.md`) |
 
 ## Archive Structure
 
@@ -69,7 +80,11 @@ Session Kit archives to a central location (default `~/.stoobz/`):
 ├── manifest.json                          ← searchable index for /index
 └── sessions/
     ├── my-project/
-    │   ├── 2026-02-13-PROJ-1234/          ← /park session archive
+    │   ├── <session-id>-active/           ← /checkin pre-allocates this for live sessions
+    │   │   ├── .session-artifacts.json    ← ledger of artifact writes
+    │   │   └── (in-flight artifacts)
+    │   ├── 2026-02-13-PROJ-1234/          ← /park renames -active/ to date-label form
+    │   │   ├── .session-artifacts.json
     │   │   ├── TLDR.md
     │   │   ├── HONE.md
     │   │   └── RETRO.md
@@ -80,7 +95,9 @@ Session Kit archives to a central location (default `~/.stoobz/`):
             └── INVESTIGATION_SUMMARY.md
 ```
 
-All artifacts are written to `./.stoobz/` during a session. `/park` archives them to `~/.stoobz/sessions/` and leaves only `.stoobz/CONTEXT_FOR_NEXT_SESSION.md` as the relay baton for `/pickup`.
+During a session, every artifact is written **directly** to the durable `<session-id>-active/` directory (via `sk write-artifact`) and **copied** to `./.stoobz/` for in-session discovery. `/park` renames the active directory to its final `<date>-<label>/` form, flips the manifest entry from `active` to `archived`, and leaves `.stoobz/CONTEXT_FOR_NEXT_SESSION.md` as the relay baton for `/pickup`.
+
+This is the **durable-first** protocol — if the session terminates abnormally, the artifacts are already in the central archive. See [`write-artifact-protocol.md`](write-artifact-protocol.md) for the contract artifact-emitting skills follow.
 
 ## Configuration
 
@@ -98,10 +115,12 @@ export SESSION_KIT_ROOT="$HOME/.sessions"
 
 | I want to... | Use |
 |--------------|-----|
+| Register this session before doing anything | `/checkin` (also auto-fires under every artifact skill) |
 | Set up expert skills for a new repo | `/prime` |
 | Update stale expert skills | `/prime --refresh` |
 | Save everything before stepping away | `/park` |
 | Resume where I left off | `/pickup` |
+| Branch a new chain from selected past sessions | `/checkpoint` |
 | Share a quick summary | `/tldr` |
 | Write up findings for the team | `/handoff` |
 | Save context for next session | `/relay` |
@@ -113,4 +132,4 @@ export SESSION_KIT_ROOT="$HOME/.sessions"
 | Search inside archived content | `/index --deep <term>` |
 | Clean up old sessions | `/sweep` |
 
-See [guide.md](guide.md) for detailed workflows and composability patterns.
+See [guide.md](guide.md) for detailed workflows and composability patterns. The `sk` CLI also exposes machine-readable surfaces (`sk checkin --json`, `sk write-artifact`, `sk park-finalize --json`) for scripting or testing — run `sk --help` for the full subcommand list.
