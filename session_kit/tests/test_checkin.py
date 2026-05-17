@@ -263,3 +263,203 @@ def test_durability_failure_on_unwriteable_root(sk_root, fake_home, project_cwd,
     monkeypatch.setenv("SESSION_KIT_ROOT", "/dev/null/cant-create-this")
     result = runner.invoke(app, ["checkin", "--explicit"])
     assert result.exit_code == EXIT_DURABILITY_FAIL
+
+
+# --- Chain inheritance flags -----------------------------------------------
+
+
+def _write_baton(
+    cwd: Path,
+    *,
+    chain_id: str | None = "demo-chain",
+    session_id: str = "11111111-1111-1111-1111-111111111111",
+    chain_position: int = 1,
+    parent_chain_id: str | None = None,
+    checkpoint_nodes: list[int] | str | None = None,
+    body_prefix: str = "# Relay baton body\n",
+    filename: str = "CONTEXT_FOR_NEXT_SESSION.md",
+) -> Path:
+    stoobz = cwd / ".stoobz"
+    stoobz.mkdir(parents=True, exist_ok=True)
+    lines = ["<!-- session-kit-chain"]
+    lines.append(f"chain_id: {chain_id if chain_id is not None else 'null'}")
+    lines.append(f"session_id: {session_id}")
+    lines.append(f"chain_position: {chain_position}")
+    if parent_chain_id is not None:
+        lines.append(f"parent_chain_id: {parent_chain_id}")
+    if checkpoint_nodes is not None:
+        if isinstance(checkpoint_nodes, list):
+            nodes_value = json.dumps(checkpoint_nodes)
+        else:
+            nodes_value = checkpoint_nodes
+        lines.append(f"checkpoint_nodes: {nodes_value}")
+    lines.append("-->\n")
+    block = "\n".join(lines)
+    path = stoobz / filename
+    path.write_text(body_prefix + "\n" + block, encoding="utf-8")
+    return path
+
+
+def test_first_checkin_individual_chain_flags(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    result = runner.invoke(
+        app,
+        [
+            "checkin",
+            "--explicit",
+            "--chain-id", "alpha-chain",
+            "--previous-session-id", "prev-sid-1",
+            "--chain-position", "4",
+            "--parent-chain-id", "root-chain",
+            "--checkpoint-nodes", "1,3,5",
+        ],
+    )
+    assert result.exit_code == EXIT_OK, result.stdout + result.stderr
+    entry = _load_manifest(sk_root)["sessions"][0]
+    assert entry["chain_id"] == "alpha-chain"
+    assert entry["previous_session_id"] == "prev-sid-1"
+    assert entry["chain_position"] == 4
+    assert entry["parent_chain_id"] == "root-chain"
+    assert entry["checkpoint_nodes"] == [1, 3, 5]
+
+
+def test_first_checkin_inherit_chain_from_baton(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    baton = _write_baton(
+        project_cwd,
+        chain_id="sk-rewrite-validation",
+        session_id="c3ee5c2b-aaaa-bbbb-cccc-deadbeefcafe",
+        chain_position=1,
+    )
+    result = runner.invoke(
+        app, ["checkin", "--silent", "--invoking", "pickup", "--inherit-chain-from", str(baton)]
+    )
+    assert result.exit_code == EXIT_OK, result.stdout + result.stderr
+    entry = _load_manifest(sk_root)["sessions"][0]
+    assert entry["chain_id"] == "sk-rewrite-validation"
+    assert entry["previous_session_id"] == "c3ee5c2b-aaaa-bbbb-cccc-deadbeefcafe"
+    assert entry["chain_position"] == 2
+    assert entry["parent_chain_id"] is None
+    assert entry["checkpoint_nodes"] is None
+
+
+def test_first_checkin_inherit_missing_path_silent_fallthrough(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    bogus = project_cwd / ".stoobz" / "does-not-exist.md"
+    result = runner.invoke(
+        app, ["checkin", "--silent", "--inherit-chain-from", str(bogus)]
+    )
+    assert result.exit_code == EXIT_OK
+    entry = _load_manifest(sk_root)["sessions"][0]
+    assert entry["chain_id"] is None
+    assert entry["chain_position"] is None
+    assert entry["previous_session_id"] is None
+
+
+def test_first_checkin_inherit_baton_with_no_chain_block(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    stoobz = project_cwd / ".stoobz"
+    stoobz.mkdir(parents=True, exist_ok=True)
+    baton = stoobz / "CONTEXT_FOR_NEXT_SESSION.md"
+    baton.write_text("# Legacy relay baton\n\nNo chain block here.\n", encoding="utf-8")
+
+    result = runner.invoke(
+        app, ["checkin", "--silent", "--inherit-chain-from", str(baton)]
+    )
+    assert result.exit_code == EXIT_OK
+    entry = _load_manifest(sk_root)["sessions"][0]
+    assert entry["chain_id"] is None
+    assert entry["chain_position"] is None
+    assert entry["previous_session_id"] is None
+
+
+def test_first_checkin_inherit_checkpoint_baton_full_fields(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    baton = _write_baton(
+        project_cwd,
+        chain_id="branched-chain",
+        session_id="abc-parked-sid",
+        chain_position=2,
+        parent_chain_id="root-chain",
+        checkpoint_nodes=[1, 2, 4],
+    )
+    result = runner.invoke(
+        app, ["checkin", "--silent", "--invoking", "pickup", "--inherit-chain-from", str(baton)]
+    )
+    assert result.exit_code == EXIT_OK, result.stdout + result.stderr
+    entry = _load_manifest(sk_root)["sessions"][0]
+    assert entry["chain_id"] == "branched-chain"
+    assert entry["previous_session_id"] == "abc-parked-sid"
+    assert entry["chain_position"] == 3
+    assert entry["parent_chain_id"] == "root-chain"
+    assert entry["checkpoint_nodes"] == [1, 2, 4]
+
+
+def test_reentry_preserves_chain_fields_and_ignores_args(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    runner.invoke(
+        app,
+        [
+            "checkin",
+            "--silent",
+            "--chain-id", "first-chain",
+            "--chain-position", "2",
+            "--previous-session-id", "first-prev",
+        ],
+    )
+    # Re-entry with different chain args — must NOT overwrite.
+    runner.invoke(
+        app,
+        [
+            "checkin",
+            "--silent",
+            "--chain-id", "rewrite-attempt",
+            "--chain-position", "99",
+            "--previous-session-id", "rewrite-prev",
+        ],
+    )
+    entry = _load_manifest(sk_root)["sessions"][0]
+    assert entry["chain_id"] == "first-chain"
+    assert entry["chain_position"] == 2
+    assert entry["previous_session_id"] == "first-prev"
+
+
+def test_chain_id_flag_overrides_inherit_chain_from(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    baton = _write_baton(
+        project_cwd,
+        chain_id="from-baton",
+        session_id="baton-sid",
+        chain_position=1,
+    )
+    runner.invoke(
+        app,
+        [
+            "checkin",
+            "--silent",
+            "--inherit-chain-from", str(baton),
+            "--chain-id", "explicit-wins",
+        ],
+    )
+    entry = _load_manifest(sk_root)["sessions"][0]
+    assert entry["chain_id"] == "explicit-wins"
+    # Other inherited fields still populate from the baton.
+    assert entry["previous_session_id"] == "baton-sid"
+    assert entry["chain_position"] == 2
+
+
+def test_checkpoint_nodes_parses_csv_to_int_list(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    runner.invoke(
+        app, ["checkin", "--silent", "--checkpoint-nodes", "1,2,4"]
+    )
+    entry = _load_manifest(sk_root)["sessions"][0]
+    assert entry["checkpoint_nodes"] == [1, 2, 4]
+
+
+def test_checkpoint_nodes_rejects_non_numeric_tokens(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    result = runner.invoke(
+        app, ["checkin", "--silent", "--checkpoint-nodes", "bad,csv"]
+    )
+    assert result.exit_code == EXIT_USAGE

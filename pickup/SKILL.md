@@ -11,24 +11,32 @@ Load prior session artifacts and get up to speed instantly. The complement to `/
 
 ## Check-In (precondition)
 
-Before the Process section runs, invoke `/checkin` in **silent mode** as a precondition. Export `INVOKING_SKILL=pickup` first so `/checkin` records this skill in the session's `skills_used` on its behalf. See [checkin/SKILL.md](../checkin/SKILL.md) for the protocol details (three-tier session-ID resolution, active-dir + ledger creation, scaffolding-idempotent re-entry with liveness refresh).
+Before the Process section runs, invoke `sk checkin --silent --invoking pickup` as a precondition. Pass `--inherit-chain-from` so chain metadata on the relay baton flows into the new session's manifest entry at first-checkin. See [checkin/SKILL.md](../checkin/SKILL.md) for the protocol details (three-tier session-ID resolution, active-dir + ledger creation, scaffolding-idempotent re-entry with liveness refresh, and the chain-inheritance flag semantics).
 
-If `/checkin` aborts (mkdir or ledger creation failure — the only durability conditions that fail loudly), this skill aborts too. Do not proceed to the Process section. Do not write any artifact.
+If `sk checkin` aborts (mkdir or ledger creation failure — the only durability conditions that fail loudly), this skill aborts too. Do not proceed to the Process section. Do not write any artifact.
 
-The canonical pattern: inline `/checkin`'s Reference Implementation at the top of this skill's single bash invocation (shell variables — `SESSION_ID`, `ACTIVE_DIR`, `LEDGER`, `NOW` — must stay in scope for any artifact write that follows). All shell work in this skill MUST run in one `Bash` tool invocation; see [checkin/SKILL.md § Execution Discipline](../checkin/SKILL.md#execution-discipline).
+### Reference Invocation
 
-### Chain Inheritance (pickup-specific)
+```bash
+BATON="./.stoobz/CONTEXT_FOR_NEXT_SESSION.md"
+if [ ! -f "$BATON" ] && [ -f "./.stoobz/CHECKPOINT_CONTEXT.md" ]; then
+  BATON="./.stoobz/CHECKPOINT_CONTEXT.md"
+fi
+sk checkin --silent --invoking pickup --inherit-chain-from "$BATON"
+```
 
-After loading the relay baton (step 2 below), extract chain metadata from `CONTEXT_FOR_NEXT_SESSION.md`:
+`--inherit-chain-from` is silent-fallthrough on a missing path or missing chain block — pass it unconditionally. Legacy / first-session pickups (no baton, no chain block) leave chain fields null exactly like before.
 
-1. Look for a `<!-- session-kit-chain ... -->` comment block containing `chain_id`, `session_id`, `chain_position`.
-2. If found, during check-in registration set:
-   - `chain_id` = inherited chain_id from relay baton
-   - `previous_session_id` = the session_id from the relay baton (the parked session)
-   - `chain_position` = inherited chain_position + 1
-   - `parent_chain_id` = inherited if present (checkpoint-originated chains)
-   - `checkpoint_nodes` = inherited if present (checkpoint-originated chains)
-3. If no chain metadata in relay baton (legacy context): start a new chain — leave chain fields null (same as first-session behavior). `/park` will assign chain identity later.
+### Chain Inheritance Semantics
+
+Chain inheritance is enforced by the binary, not by skill prose:
+
+- `chain_id` from the baton → manifest `chain_id`
+- baton `session_id` → manifest `previous_session_id` (the PARKED session you're picking up)
+- baton `chain_position` + 1 → manifest `chain_position` (this new session is the next link)
+- baton `parent_chain_id`, `checkpoint_nodes` → pass through to manifest if present (checkpoint-originated chains)
+
+Chain fields are write-once at first-checkin; re-entry preserves them. See [checkin/SKILL.md § Chain Inheritance](../checkin/SKILL.md#chain-inheritance) for the full flag reference.
 
 ## Process
 

@@ -41,6 +41,12 @@ For the canonical pattern callers use, see [tldr/SKILL.md](../tldr/SKILL.md) —
 | `--explicit` | User-invoked mode. Emits success / re-entry message; appends `"checkin"` to `skills_used`. |
 | `--silent` | Precondition mode. No stdout on success. |
 | `--invoking <skill>` | Only meaningful with `--silent`. The named skill is appended to `skills_used` instead of `"checkin"`. |
+| `--chain-id <id>` | Explicit `chain_id` for the new entry. First-checkin only; ignored on re-entry. |
+| `--previous-session-id <sid>` | Explicit `previous_session_id`. First-checkin only. |
+| `--chain-position <n>` | Explicit `chain_position`. First-checkin only. |
+| `--parent-chain-id <id>` | Explicit `parent_chain_id` for checkpoint-originated chains. First-checkin only. |
+| `--checkpoint-nodes <csv>` | Comma-separated integer list stored as `checkpoint_nodes`. Rejects non-numeric tokens with exit 3. First-checkin only. |
+| `--inherit-chain-from <path>` | Parse a `<!-- session-kit-chain ... -->` block from the relay baton at `<path>` and populate chain fields. Individual `--chain-*` flags override. Silent fallthrough on missing file / missing block. First-checkin only. |
 | `--json` | Emit a single JSON object on stdout instead of the human message. Schema: `{session_id, active_dir, ledger, manifest, resolved_via, is_first, mode, appended_skill}`. |
 | `--debug` | Print resolution + path debug info to stderr. |
 
@@ -124,7 +130,32 @@ All artifact-producing session-kit skills, as a silent precondition. Currently:
 
 ## Chain Propagation
 
-A **chain** is a logical work stream spanning multiple sessions connected via park/pickup. `/checkin` itself does not write chain metadata at registration — those fields start `null`. `/park` resolves the chain name and sets `chain_id`, `chain_position`, `previous_session_id`; `/pickup` reads chain metadata from the relay baton and updates the new session's entry. See `park/SKILL.md` and `pickup/SKILL.md` for the full rules (unchanged by this thin-orchestrator migration).
+A **chain** is a logical work stream spanning multiple sessions connected via park/pickup. By default `/checkin` leaves chain metadata `null` at registration; `/park` resolves the chain name and writes a `<!-- session-kit-chain ... -->` block to the relay baton, and `/pickup` re-enters with `--inherit-chain-from <baton>` so the binary populates chain fields on first-checkin. See `park/SKILL.md`, `pickup/SKILL.md`, and the [Chain Inheritance](#chain-inheritance) section below.
+
+## Chain Inheritance
+
+Chain fields are **registration-time only**: the new flags below populate the manifest entry on first-checkin and are ignored on re-entry. Re-entry always preserves whatever chain metadata is already in the manifest. This matches the parked/picked-up lifecycle — chain identity is decided once when the session enters Session Kit, then carried forward unchanged.
+
+| Flag | Field populated on first-checkin |
+|------|----------------------------------|
+| `--chain-id` | `chain_id` |
+| `--previous-session-id` | `previous_session_id` |
+| `--chain-position` | `chain_position` |
+| `--parent-chain-id` | `parent_chain_id` |
+| `--checkpoint-nodes` | `checkpoint_nodes` (parsed CSV → JSON array of ints) |
+| `--inherit-chain-from <path>` | Bulk-populate by parsing the relay baton's chain block |
+
+`--inherit-chain-from` opens the file at `<path>`, regex-extracts the first `<!-- session-kit-chain ... -->` block, and maps:
+
+- `chain_id` → `chain_id`
+- `session_id` → `previous_session_id` (the PARKED session whose baton is being picked up)
+- `chain_position` + 1 → `chain_position` (the new session is the next link in the chain)
+- `parent_chain_id` → `parent_chain_id` (passthrough; checkpoint-originated chains)
+- `checkpoint_nodes` → `checkpoint_nodes` (passthrough; JSON array or CSV accepted in the block)
+
+Missing path or missing chain block: silent fallthrough — first-checkin proceeds with chain fields null. This is not a usage error, so `/pickup` can invoke `--inherit-chain-from` unconditionally on the baton path.
+
+Individual flags override `--inherit-chain-from`. The full authoritative reference is `sk checkin --help`.
 
 ## Rules
 

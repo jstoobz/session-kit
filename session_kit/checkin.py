@@ -17,6 +17,7 @@ fix the four hardening commits encoded must survive here:
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -148,6 +149,115 @@ def _extract_last_exchange(session_file: Path | None) -> dict | None:
     }
 
 
+_CHAIN_BLOCK_RE = re.compile(
+    r"<!--\s*session-kit-chain\s*(.*?)-->",
+    re.DOTALL,
+)
+
+
+def _parse_chain_block(text: str) -> dict | None:
+    """Extract the first `<!-- session-kit-chain ... -->` block as a key:value dict.
+
+    Returns None if no block found. Unknown keys are preserved; numeric coercion
+    happens in `_chain_inheritance_from_baton`.
+    """
+    m = _CHAIN_BLOCK_RE.search(text)
+    if not m:
+        return None
+    parsed: dict[str, str] = {}
+    for raw in m.group(1).splitlines():
+        line = raw.strip()
+        if not line or ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        parsed[key.strip()] = value.strip()
+    return parsed or None
+
+
+def _coerce_int(value: str) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_int_list(value: str) -> list[int] | None:
+    """Best-effort parse of a checkpoint_nodes value from a chain block.
+
+    Accepts JSON arrays (`[1,2,3]`) and CSV (`1,2,3`). Returns None on failure
+    so the field stays null rather than corrupted.
+    """
+    value = value.strip()
+    if not value or value.lower() == "null":
+        return None
+    if value.startswith("["):
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(decoded, list) and all(isinstance(n, int) for n in decoded):
+            return decoded
+        return None
+    parts = [p.strip() for p in value.split(",") if p.strip()]
+    out: list[int] = []
+    for p in parts:
+        n = _coerce_int(p)
+        if n is None:
+            return None
+        out.append(n)
+    return out or None
+
+
+def _chain_inheritance_from_baton(path: Path) -> dict | None:
+    """Read a relay baton and produce the chain-inheritance dict for the new session.
+
+    Returns None on missing file or absent chain block (silent fallthrough — the
+    first-checkin proceeds with chain fields null). Mapping:
+
+      parsed `chain_id`         → manifest `chain_id`
+      parsed `session_id`       → manifest `previous_session_id`
+      parsed `chain_position`+1 → manifest `chain_position`
+      parsed `parent_chain_id`  → manifest `parent_chain_id` (passthrough)
+      parsed `checkpoint_nodes` → manifest `checkpoint_nodes` (passthrough)
+    """
+    if not path.is_file():
+        return None
+    try:
+        body = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    block = _parse_chain_block(body)
+    if not block:
+        return None
+
+    inherited: dict[str, Any] = {}
+    chain_id = block.get("chain_id")
+    if chain_id and chain_id.lower() != "null":
+        inherited["chain_id"] = chain_id
+
+    prev_sid = block.get("session_id")
+    if prev_sid and prev_sid.lower() != "null":
+        inherited["previous_session_id"] = prev_sid
+
+    pos = block.get("chain_position")
+    if pos is not None:
+        n = _coerce_int(pos)
+        if n is not None:
+            inherited["chain_position"] = n + 1
+
+    parent = block.get("parent_chain_id")
+    if parent and parent.lower() != "null":
+        inherited["parent_chain_id"] = parent
+
+    nodes = block.get("checkpoint_nodes")
+    if nodes is not None:
+        coerced = _coerce_int_list(nodes)
+        if coerced is not None:
+            inherited["checkpoint_nodes"] = coerced
+
+    return inherited or None
+
+
 def _initial_ledger(session_id: str, started_at: str, cwd: Path) -> dict:
     return {
         "schema_version": 1,
@@ -169,7 +279,9 @@ def _new_manifest_entry(
     return_to_cmd: str | None,
     branch: str | None,
     append_skill: str,
+    chain_fields: dict | None = None,
 ) -> dict:
+    chain = chain_fields or {}
     return {
         "id": session_id,
         "project": project,
@@ -185,11 +297,11 @@ def _new_manifest_entry(
         "status": "active",
         "session_id": session_id,
         "return_to": return_to_cmd,
-        "chain_id": None,
-        "chain_position": None,
-        "previous_session_id": None,
-        "parent_chain_id": None,
-        "checkpoint_nodes": None,
+        "chain_id": chain.get("chain_id"),
+        "chain_position": chain.get("chain_position"),
+        "previous_session_id": chain.get("previous_session_id"),
+        "parent_chain_id": chain.get("parent_chain_id"),
+        "checkpoint_nodes": chain.get("checkpoint_nodes"),
         "started_at": started_at,
         "last_activity": now,
         "last_exchange": last_exchange,
@@ -211,8 +323,13 @@ def run_checkin(
     invoking: str | None,
     json_out: bool,
     debug: bool,
+    chain_fields: dict | None = None,
 ) -> dict:
-    """Run the full ceremony; return a result dict (also the --json payload)."""
+    """Run the full ceremony; return a result dict (also the --json payload).
+
+    `chain_fields` is applied on first-checkin only. On re-entry, the manifest's
+    existing chain metadata is preserved unchanged (registration-time only).
+    """
     if mode not in ("explicit", "silent"):
         raise ValueError(f"mode must be 'explicit' or 'silent', got {mode!r}")
 
@@ -302,6 +419,7 @@ def run_checkin(
                     return_to_cmd=return_to_cmd,
                     branch=branch,
                     append_skill=append_skill,
+                    chain_fields=chain_fields,
                 )
             )
         else:
@@ -372,6 +490,43 @@ def command(
         metavar="SKILL",
         help="Name of the skill invoking /checkin as a silent precondition; appended to skills_used.",
     ),
+    chain_id: str = typer.Option(
+        None,
+        "--chain-id",
+        metavar="ID",
+        help="Explicit chain_id (first-checkin only; ignored on re-entry).",
+    ),
+    previous_session_id: str = typer.Option(
+        None,
+        "--previous-session-id",
+        metavar="SID",
+        help="Explicit previous session id (first-checkin only).",
+    ),
+    chain_position: int = typer.Option(
+        None,
+        "--chain-position",
+        metavar="N",
+        help="Explicit chain position (first-checkin only).",
+    ),
+    parent_chain_id: str = typer.Option(
+        None,
+        "--parent-chain-id",
+        metavar="ID",
+        help="Explicit parent chain id for checkpoint-originated chains (first-checkin only).",
+    ),
+    checkpoint_nodes: str = typer.Option(
+        None,
+        "--checkpoint-nodes",
+        metavar="CSV",
+        help="Comma-separated integer checkpoint nodes (first-checkin only).",
+    ),
+    inherit_chain_from: str = typer.Option(
+        None,
+        "--inherit-chain-from",
+        metavar="PATH",
+        help="Parse chain block from a relay baton at PATH and populate chain fields. "
+        "Individual --chain-* flags override. Silent fallthrough on missing file / missing block.",
+    ),
     json_out: bool = typer.Option(
         False, "--json", help="Emit a machine-readable JSON result on stdout."
     ),
@@ -386,6 +541,11 @@ def command(
       --silent            → no stdout; if --invoking <skill>, append it instead
       (neither)           → defaults to silent
 
+    Chain inheritance flags populate chain_id / previous_session_id / chain_position /
+    parent_chain_id / checkpoint_nodes on the manifest entry at first-checkin only.
+    Re-entry preserves whatever is already in the manifest. Individual flags override
+    --inherit-chain-from.
+
     Exit codes:
       0  success (new check-in or re-entry)
       1  durability failure (mkdir or ledger / manifest write) — caller MUST abort
@@ -397,11 +557,38 @@ def command(
 
     mode = "explicit" if explicit else "silent"
 
+    chain_fields: dict[str, Any] = {}
+
+    if inherit_chain_from:
+        inherited = _chain_inheritance_from_baton(Path(inherit_chain_from).expanduser())
+        if inherited:
+            chain_fields.update(inherited)
+
+    if chain_id:
+        chain_fields["chain_id"] = chain_id
+    if previous_session_id:
+        chain_fields["previous_session_id"] = previous_session_id
+    if chain_position is not None:
+        chain_fields["chain_position"] = chain_position
+    if parent_chain_id:
+        chain_fields["parent_chain_id"] = parent_chain_id
+    if checkpoint_nodes is not None:
+        parts = [p.strip() for p in checkpoint_nodes.split(",") if p.strip()]
+        try:
+            chain_fields["checkpoint_nodes"] = [int(p) for p in parts]
+        except ValueError:
+            print(
+                f"usage: --checkpoint-nodes must be a comma-separated integer list, got {checkpoint_nodes!r}",
+                file=sys.stderr,
+            )
+            raise typer.Exit(code=EXIT_USAGE)
+
     run_checkin(
         cwd=Path.cwd().resolve(),
         mode=mode,
         invoking=invoking,
         json_out=json_out,
         debug=debug,
+        chain_fields=chain_fields or None,
     )
     raise typer.Exit(code=EXIT_OK)
