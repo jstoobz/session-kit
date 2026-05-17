@@ -103,7 +103,7 @@ User: /persist deploy-runbook playbook deployment
 - **Always markdown** — output is always a `.md` file; format content cleanly.
 - **Don't over-format** — preserve the artifact's natural structure; don't wrap a table in unnecessary headings.
 - **Infer from context** — when called without a name, look at what was just discussed / produced and pick the right content and name.
-- **Tags are cheap** — 2-5 tags; better to over-tag. They flow into the manifest entry's `tags[]` array via `sk write-artifact --tags`, merge-deduped with anything already there. Both `/persist` (explicit) and `/park` (auto-detected from TLDR content) write into the same `tags[]` field, so a session that runs several `/persist` calls before `/park` accumulates the union of every tag set — discoverable via `/index <tag>`.
+- **Tags are cheap** — 2-5 tags; better to over-tag. They flow into the manifest entry's `tags[]` array via `sk write-artifact --tags`, merge-deduped with anything already there. Multiple `/persist` calls in the same session accumulate the union of every tag set, discoverable mid-session via `/index --active <tag>`. NOTE: `sk park-finalize` currently *replaces* `tags[]` with the tag CSV it receives, so /park-time tag inference overwrites /persist tags. The merge of /persist + /park tag sets at archive time is tracked as a follow-on (see Phase 2D notes).
 - **No session ceremony** — this isn't `/park`. No TLDR, no relay doc, no prompt lab. Just save the thing.
 - The canonical write location is `<active-archive>/<NAME>.md`; `cwd/.stoobz/<NAME>.md` is the best-effort mirror.
 - The ledger entry's `name` is `<NAME>.md`.
