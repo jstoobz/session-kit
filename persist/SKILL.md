@@ -35,19 +35,21 @@ Save a reference artifact from the current conversation. Durable write lands at 
 
 5. **Compose `PERSIST_BODY`** as clean markdown. Preserve the artifact's natural structure (table, prose, code blocks). No footer; metadata belongs in headers.
 
-6. **Single bash invocation** — interpolate `NAME`:
+6. **Single bash invocation** — interpolate `NAME` and the resolved `TAGS` list (already deduped to a CSV string). `sk write-artifact --tags` merges-dedupes the CSV into the manifest entry's `tags[]`; passing an empty string is a no-op:
 
    ```bash
-   sk write-artifact --skill persist --artifact "$NAME.md" --content-stdin <<< "$PERSIST_BODY"
+   TAGS_CSV="alpha,beta,gamma"   # comma-joined from the resolved TAGS list; "" if none
+   sk write-artifact --skill persist --artifact "$NAME.md" \
+     --content-stdin --tags "$TAGS_CSV" <<< "$PERSIST_BODY"
    ```
 
-7. **Confirm to operator** — print the resolved name, archive path, tags, and the post-`/park` find hint:
+7. **Confirm to operator** — print the resolved name, archive path, tags (now durably attached to the manifest entry, mergeable with later `/park` auto-detection), and the post-`/park` find hint:
 
    ```
    Persisted to .stoobz/<NAME>.md
-     Tags:  <comma-separated>
+     Tags:  <comma-separated>   (merged into manifest tags[])
      Note:  Archived to ~/.stoobz/sessions/ when you /park
-     Find:  /index <name>  (after parking)
+     Find:  /index <tag-or-name>
    ```
 
    (The actual archive path is printed by `sk write-artifact`; the tags / find hint come from Claude on top.)
@@ -59,9 +61,10 @@ User: [produces a deployment-methods comparison table]
 User: /persist
 
 → NAME=deployment-methods, TAGS=[windows, deployment, comparison]
-→ sk write-artifact --skill persist --artifact deployment-methods.md --content-stdin <<< "$PERSIST_BODY"
+→ sk write-artifact --skill persist --artifact deployment-methods.md \
+    --content-stdin --tags "windows,deployment,comparison" <<< "$PERSIST_BODY"
 → Persisted to .stoobz/deployment-methods.md
-    Tags:  windows, deployment, comparison
+    Tags:  windows, deployment, comparison   (merged into manifest tags[])
     Note:  Archived to ~/.stoobz/sessions/ when you /park
 ```
 
@@ -69,7 +72,8 @@ User: /persist
 User: /persist auth-flow-notes auth architecture
 
 → NAME=auth-flow-notes, TAGS=[auth, architecture]
-→ sk write-artifact --skill persist --artifact auth-flow-notes.md --content-stdin <<< "$PERSIST_BODY"
+→ sk write-artifact --skill persist --artifact auth-flow-notes.md \
+    --content-stdin --tags "auth,architecture" <<< "$PERSIST_BODY"
 ```
 
 ```
@@ -78,7 +82,8 @@ User: /persist deploy-runbook playbook deployment
 
 → Ask: "Overwrite deploy-runbook.md or save as deploy-runbook-2.md?"
 → User: "save as -2"
-→ sk write-artifact --skill persist --artifact deploy-runbook-2.md --content-stdin <<< "$PERSIST_BODY"
+→ sk write-artifact --skill persist --artifact deploy-runbook-2.md \
+    --content-stdin --tags "playbook,deployment" <<< "$PERSIST_BODY"
 ```
 
 ## Exit Codes
@@ -98,7 +103,7 @@ User: /persist deploy-runbook playbook deployment
 - **Always markdown** — output is always a `.md` file; format content cleanly.
 - **Don't over-format** — preserve the artifact's natural structure; don't wrap a table in unnecessary headings.
 - **Infer from context** — when called without a name, look at what was just discussed / produced and pick the right content and name.
-- **Tags are cheap** — 2-5 tags; better to over-tag. Tags are surfaced in the confirmation message today and will flow into `/index` once Phase 2D wires per-artifact tag storage. They are not currently persisted to the ledger or manifest; treat them as a UX/searchability hint, not an indexed field yet.
+- **Tags are cheap** — 2-5 tags; better to over-tag. They flow into the manifest entry's `tags[]` array via `sk write-artifact --tags`, merge-deduped with anything already there. Both `/persist` (explicit) and `/park` (auto-detected from TLDR content) write into the same `tags[]` field, so a session that runs several `/persist` calls before `/park` accumulates the union of every tag set — discoverable via `/index <tag>`.
 - **No session ceremony** — this isn't `/park`. No TLDR, no relay doc, no prompt lab. Just save the thing.
 - The canonical write location is `<active-archive>/<NAME>.md`; `cwd/.stoobz/<NAME>.md` is the best-effort mirror.
 - The ledger entry's `name` is `<NAME>.md`.

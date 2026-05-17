@@ -5,154 +5,88 @@ description: Scan $SESSION_KIT_ROOT/manifest.json (default ~/.stoobz/) for sessi
 
 # Index
 
-Find and catalog past sessions from the `~/.stoobz/sessions/` archive.
+Find and catalog past sessions from the manifest (and surface unregistered active dirs as orphans).
 
-> **Archive root:** Resolve `$SESSION_KIT_ROOT` (default: `~/.stoobz`). All `~/.stoobz/` paths below use this root.
+> **Archive root:** `$SESSION_KIT_ROOT` (default `~/.stoobz`). The `sk` binary resolves it automatically; this skill just hands `$@` through.
 
 ## Process
 
-### Manifest-First Path (default)
+Compose nothing. `/index` is a query, not an artifact. Pass the operator's args straight through to the `sk index` subcommand and surface its stdout to the user:
 
-1. **Read `~/.stoobz/manifest.json`** — Parse the sessions array.
-
-2. **Partition by status** — Separate entries into active (`status == "active"`) and archived (`status != "active"` or no `status` field). Active sessions display first.
-
-3. **Apply filter** (if user provided an argument):
-   - `/index` → show all sessions
-   - `/index <term>` → case-insensitive search across: `tags`, `summary`, `label`, `project`, `branch`, `session_id` (partial UUID match), `chain_id`, `last_exchange` text
-   - Multiple words are ANDed (all must match somewhere across fields)
-
-### Active Sessions (shown first)
-
-Display entries where `status == "active"` before archived sessions:
-
-```markdown
-## Active Sessions
-
-| Project | Since | Last Active | Branch | Last Exchange | Resume |
-|---------|-------|-------------|--------|---------------|--------|
-| stoobz-web | 2h ago | 5m ago | main | "Nailed it! /persist the mig..." / "Persisted to ./stoobz/..." | `cd ~/... && claude --resume 2578...` |
+```bash
+sk index "$@"
 ```
 
-- **Since:** Relative time from `started_at` ("2h ago", "1d ago")
-- **Last Active:** Relative time from `last_activity`
-- **Last Exchange:** User text / Assistant text (from `last_exchange`, already truncated at 80 chars)
-- **Resume:** The `return_to` value, displayed as code
-- If no active sessions, skip this section silently
+That's the entire skill body. The binary handles filtering, rendering, JSON output, the orphans filesystem scan, and the deep-content grep. Run `sk index --help` for the authoritative argument reference.
 
-### Archived Sessions
+## Arguments
 
-4. **Present the archived index:**
+| Flag / arg | Effect |
+|------------|--------|
+| `<filter>` | Positional substring (case-insensitive) matched against `tags`, `summary`, `label`, `project`, `branch`, `session_id`, `chain_id`, and the `last_exchange` text |
+| `--active` | Only sessions with `status: "active"` (renders an Active Sessions table; archived section suppressed) |
+| `--orphans` | Filesystem scan for `<sid>-active/` directories with no manifest entry (legacy / un-checked-in sessions) — read side of the WAL pattern from ADR-0004 |
+| `--chain` | Group sessions by `chain_id`, sorted by `chain_position`; shows fork annotations for `/checkpoint` branches |
+| `--since <when>` | Date filter: `today`, `week`, `month`, or `YYYY-MM-DD` |
+| `--deep <pattern>` | Grep through archived artifact text for `pattern` (case-insensitive) |
+| `--json` | Structured JSON output (active + archived + orphans + deep hits) |
+| `--debug` | Stderr trace of counts for each section |
 
-```markdown
-## Session Index — ~/.stoobz/manifest.json (N archived sessions)
+Filters combine: `sk index --active foo` shows only active sessions whose haystack contains `foo`. `--chain <term>` filters chains by `chain_id`, `project`, or `summary`, and also surfaces chains forked from a matched chain.
 
-| Project | Date | Label | Summary | Artifacts | Tags |
-|---------|------|-------|---------|-----------|------|
-| my-project | 2026-02-13 | PROJ-1234 | Auth token refresh fix | T R P | elixir, auth |
-| my-project | 2026-02-10 | auth-token-refresh | Token expiry investigation | T H P | elixir, phoenix |
-| api-gateway | 2026-01-28 | rate-limiting | API rate limiting | T I | go, infrastructure |
+## Scope note: `--orphans`
 
-**Legend:** T=TLDR C=Context K=Checkpoint R=Retro P=Hone H=Handoff I=Investigation
+`--orphans` covers the **filesystem-without-manifest** direction only — `<sid>-active/` directories that were created by something other than `sk checkin` (legacy or hand-built fixtures). The inverse — manifest entries with `status: "active"` whose work has stalled — is a different concern (ADR-0007, abandoned-but-registered) and not handled here.
+
+## Examples
+
+```
+/index                         → all archived sessions, newest first
+/index auth                    → filter by tags/summary/label/project/branch
+/index --active                → only in-flight sessions
+/index --orphans               → filesystem dirs that never registered
+/index --chain                 → grouped by chain, with fork annotations
+/index --chain brrp-migration  → one chain + its branches
+/index --since week            → last 7 days
+/index --since 2026-04-01      → on or after that date
+/index --deep "rate limit"     → grep archived artifact bodies
+/index --json                  → structured payload
 ```
 
-   **Artifact abbreviations:**
-   - `T` = TLDR.md
-   - `C` = CONTEXT_FOR_NEXT_SESSION.md
-   - `K` = CHECKPOINT_CONTEXT.md
-   - `R` = RETRO.md
-   - `P` = HONE.md
-   - `H` = HANDOFF.md
-   - `I` = INVESTIGATION_SUMMARY.md or INVESTIGATION_CONTEXT.md
+## Output legend
 
-5. **For each result**, show the `source_dir` so the user can `cd` there and `/pickup`.
+The default archived table includes an `Artifacts` column with single-letter badges:
 
-6. **If user is searching**, highlight matching results and show the summary field for context.
+| Letter | Artifact |
+|--------|----------|
+| `T` | TLDR.md |
+| `C` | CONTEXT_FOR_NEXT_SESSION.md |
+| `K` | CHECKPOINT_CONTEXT.md |
+| `R` | RETRO.md |
+| `P` | HONE.md |
+| `H` | HANDOFF.md |
+| `I` | INVESTIGATION_SUMMARY.md / INVESTIGATION_CONTEXT.md |
 
-### `--active` Flag
+Active sessions render with `Since` / `Last Active` / `Branch` / `Last Exchange` / `Resume` columns so the operator can `cd` and `--resume` the session directly.
 
-Show only active sessions. Skip the archived section entirely.
+## Exit codes
 
-### `--since <duration>` Flag
+`sk index` returns:
 
-Filter all entries (active + archived) by recency.
-- Duration formats: `1h`, `4h`, `1d`, `3d`, `1w`, `2w`
-- Compare against `last_activity` (if present) or `date` field
-- Show matching entries in their respective sections (active first, then archived)
-
-### `--chain <term>` Flag
-
-Group entries by `chain_id`, show the full work stream timeline:
-
-```markdown
-## Chain: brrp-migration (2 sessions, Feb 28 - Mar 1)
-
-| # | Date | Project | Branch | Status | Summary / Last Exchange | Resume |
-|---|------|---------|--------|--------|-------------------------|--------|
-| 1 | Feb 28 | stoobz-api | main | archived | Schema migration deep dive... | cd ~/...api && claude ... |
-| 2 | Mar 1 | stoobz-web | main | ACTIVE | "Nailed it! /persist the mig..." | cd ~/...web && claude ... |
-```
-
-- `/index --chain` (no term): show all chains, grouped by `chain_id`, sorted by most recent activity
-- `/index --chain <term>`: filter chains by `chain_id`, `project`, or `summary` content matching the term. Also show any chains that forked from the matched chain (where `parent_chain_id` matches).
-- Entries without a `chain_id` are shown separately under "Unchained Sessions"
-- Within each chain, sort by `chain_position` ascending
-
-**Fork annotations:** Chains created via `/checkpoint` have `parent_chain_id` and `checkpoint_nodes`. Display these as:
-
-```markdown
-### focused-fix (2 nodes) ← forked from brrp-migration (nodes 1, 2)
-```
-
-When viewing a specific chain (`/index --chain brrp-migration`), also show any branches that forked from it.
-
-### Deep Search — `--deep`
-
-When invoked as `/index --deep <term>` (or `/index -d <term>`), search inside the actual archived artifact content:
-
-1. **Grep `~/.stoobz/sessions/`** — Search all `.md` files under `~/.stoobz/sessions/` for the term (case-insensitive).
-
-2. **Group by session** — Collect hits by their parent archive directory, not individual files.
-
-3. **Present with context snippets:**
-
-```markdown
-## Deep Search — "auth-key" (2 hits across 1 session)
-
-### my-app / 2026-02-12-usb-bundle
-**TLDR.md:14** — ...the **api-key** rotation wasn't picking up the new value from env...
-**INVESTIGATION_CONTEXT.md:87** — ...the **api-key** needs to be passed as a header, not a query param...
-
-Source: ~/my-app
-Tags: api, debugging, infrastructure
-```
-
-4. **Also run manifest search** — Show manifest matches first (fast), then deep matches below. This way the user sees both metadata hits and content hits.
-
-5. **If no manifest exists**, deep search still works — it's just grep over `~/.stoobz/sessions/`.
-
-### Filesystem Fallback (no manifest)
-
-If `~/.stoobz/manifest.json` doesn't exist:
-
-1. **Notify the user:** "No manifest found. Falling back to filesystem scan..."
-
-2. **Scan `~/.stoobz/sessions/`** for directories containing session artifacts (`TLDR.md`, `RETRO.md`, `HONE.md`, `HANDOFF.md`, `INVESTIGATION_SUMMARY.md`, `INVESTIGATION_CONTEXT.md`).
-
-3. **For each directory found:**
-   - Read the first 5 lines of `TLDR.md` (if present) for the title and date
-   - Note which artifacts exist
-   - Note the most recent modification date
-
-4. **Present the index** in the same table format as above (without tags, since those come from the manifest).
-
-5. **Suggest:** "Run `/park --archive-system` to build a manifest from these artifacts for faster future lookups. Add `--all` to skip prompting, or `--dry-run` to preview first."
+| Code | Meaning |
+|------|---------|
+| `0` | Success (including empty result sets) |
+| `3` | Usage error (bad `--since` value) |
 
 ## Rules
 
-- **Read only headers** — Don't load full file contents. The manifest has everything needed; for fallback, first 5 lines of TLDR.md is enough.
-- **Sort by date** — Most recent first.
-- **Fast** — This is a lookup tool. Don't analyze, just catalog.
-- **Suggest pickup** — If a result has a `source_dir` with `CONTEXT_FOR_NEXT_SESSION.md`, note: "Has resume context — run `/pickup` from that directory."
-- **Present to the user directly** — Don't write a file (this is a query, not an artifact).
-- **Manifest is truth** — When manifest exists, trust it. Don't re-scan the filesystem.
+- **One invocation, no composition.** Don't pre-process args; pass them through verbatim.
+- **Manifest is truth.** When the manifest exists, the binary trusts it. The filesystem scan only fires for `--orphans`.
+- **Present, don't write.** `/index` produces no artifact. Render the subcommand output as-is.
+- **Suggest `/pickup` where it makes sense.** If an Active row's `Resume` command points at a different cwd, mention "Has resume context — `cd` there and `/pickup`."
+
+## See also
+
+- [checkin/SKILL.md](../checkin/SKILL.md) — the registration side of the WAL pattern
+- `sk index --help` — authoritative arg reference
+- [ADR-0004](~/.stoobz/kb/adr/0004-session-kit-artifact-durability.md), [ADR-0005](~/.stoobz/kb/adr/0005-skills-as-thin-orchestrators-of-versioned-scripts.md)
