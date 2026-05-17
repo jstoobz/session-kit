@@ -5,252 +5,129 @@ description: Park the current session by generating all session artifacts, archi
 
 # Park Session
 
-Generate all session artifacts, archive them to `~/.stoobz/sessions/`, and clean up cwd. The "I'm stepping away, save everything" command.
+End-of-session ceremony. Generate TLDR / RELAY / HONE, then finalize the active archive — rename `<sid>-active/` to `<date>-<label>/`, flip the manifest entry to `archived`, and append chain metadata to the relay baton.
 
-> **Archive root:** Resolve `$SESSION_KIT_ROOT` (default: `~/.stoobz`). All `~/.stoobz/` paths below use this root.
+Three `sk write-artifact` calls and one `sk park-finalize` call. The judgment (label resolution, tag inference, summary extraction) stays in this skill's prose; the durability, locking, and manifest math live in the binaries.
 
-## Check-In (precondition)
+## Contract
 
-Before the Process section runs, invoke `/checkin` in **silent mode** as a precondition. Export `INVOKING_SKILL=park` first so `/checkin` records this skill in the session's `skills_used` on its behalf. See [checkin/SKILL.md](../checkin/SKILL.md) for the protocol details (three-tier session-ID resolution, active-dir + ledger creation, scaffolding-idempotent re-entry with liveness refresh).
-
-If `/checkin` aborts (mkdir or ledger creation failure — the only durability conditions that fail loudly), this skill aborts too. Do not proceed to the Process section. Do not write any artifact.
-
-The canonical pattern: inline `/checkin`'s Reference Implementation at the top of this skill's single bash invocation (shell variables — `SESSION_ID`, `ACTIVE_DIR`, `LEDGER`, `NOW` — must stay in scope for any artifact write that follows). All shell work in this skill MUST run in one `Bash` tool invocation; see [checkin/SKILL.md § Execution Discipline](../checkin/SKILL.md#execution-discipline).
+- **Inputs:** optional `<label>` argument (e.g., `/park scripts-as-tools-substrate`); current conversation; current git state.
+- **Outputs:** three artifacts in the durable archive (`TLDR.md`, `CONTEXT_FOR_NEXT_SESSION.md`, `HONE.md`); cwd mirror of the same; manifest entry for this session flipped from `active` → `archived`; chain metadata block appended to `./.stoobz/CONTEXT_FOR_NEXT_SESSION.md`.
+- **Idempotent:** if the session is already archived, `sk park-finalize` is a friendly no-op — it surfaces the existing archive path and exits 0.
 
 ## Process
 
-### Phase 1 — Generate Artifacts
+### 1. Announce
 
-1. **Announce** — Tell the user: "Parking this session. Generating artifacts..."
+Tell the user: `Parking this session. Generating artifacts...`
 
-2. **Run each skill in sequence:**
-   - `/tldr` → `.stoobz/TLDR.md` — Shareable session summary
-   - `/relay` → `.stoobz/CONTEXT_FOR_NEXT_SESSION.md` — Resume context for next session
-   - `/hone` → `.stoobz/HONE.md` — Original + optimized prompt
+### 2. Compose the three artifact bodies
 
-3. **For each skill, follow its full process** including:
-   - Checking for existing files (merge, don't overwrite)
-   - Using the correct output format from each skill's spec
-   - Applying each skill's rules
+For each of TLDR / RELAY / HONE, follow the body-composition prose in that skill's `Process` section (sections 1–4 of [tldr/SKILL.md](../tldr/SKILL.md), [relay/SKILL.md](../relay/SKILL.md), [hone/SKILL.md](../hone/SKILL.md)). Bind the resulting bodies to shell variables `$TLDR_BODY`, `$RELAY_BODY`, `$HONE_BODY`.
 
-### Phase 2 — Archive
+Read prior archive copies (`~/.stoobz/sessions/<project>/<sid>-active/<NAME>.md`) and weave their content under a `## Previous Session` heading if present — the rolling-history rule from each individual skill applies here too.
 
-4. **Determine project name:**
-   - If in a git repo: `basename $(git rev-parse --show-toplevel)`
-   - Otherwise: `basename $(pwd)`
+### 3. Write the three artifacts via the substrate
 
-5. **Determine label** (first match wins):
-   - User provided an argument to `/park <label>` → use that label
-   - Git branch name (if not `main`, `master`, `develop`) → use branch name
-   - Slugify the first heading from TLDR.md → use that (max 50 chars, lowercase, hyphens)
-   - Fallback → date only (no label suffix)
-
-6. **Build archive path:**
-   - Pattern: `~/.stoobz/sessions/<project>/<YYYY-MM-DD>-<label>/`
-   - If path already exists, append `-2`, `-3`, etc.
-   - `mkdir -p` the path
-
-7. **Copy artifacts to archive:**
-
-   | Source (`./.stoobz/`) | Copy to archive | Stays in `./.stoobz/` |
-   |----------------------|----------------|----------------------|
-   | `TLDR.md` | Yes | No |
-   | `CONTEXT_FOR_NEXT_SESSION.md` | Yes (duplicate) | Yes (relay baton) |
-   | `HONE.md` | Yes | No |
-   | `RETRO.md` (if exists) | Yes | No |
-   | `HANDOFF.md` (if exists) | Yes | No |
-   | `INVESTIGATION_SUMMARY.md` (if exists) | Yes | No |
-   | `INVESTIGATION_CONTEXT.md` (if exists) | Yes | No |
-   | `evidence/` (if exists, `cp -r`) | Yes | No |
-
-8. **Clean up `./.stoobz/`** — Remove all artifacts from `./.stoobz/` **except** `CONTEXT_FOR_NEXT_SESSION.md` (relay baton stays for `/pickup`). Don't remove the `./.stoobz/` directory itself.
-
-9. **Update manifest** — Read-modify-write `~/.stoobz/manifest.json`:
-   - If file doesn't exist, create it with `{"sessions": []}`
-   - If file is corrupted/unparseable, back it up as `manifest.json.bak` and create fresh
-
-   **Lookup order (first match wins):**
-   1. **Active entry match:** Find an entry with matching `session_id` and `"status": "active"`. If found, **upgrade it**: set `status` to `"archived"`, populate `id` (date-label), `label`, `summary`, `archive_path`, `artifacts`, `tags`. Update `last_activity` and `last_exchange`. Keep `session_id`, `started_at`, `return_to`, `chain_id`, `chain_position`, `previous_session_id`, `skills_used` from the active entry.
-   2. **Chain naming:** If this is `chain_position` 1 and `chain_id` is null or equals the `session_id` (fallback), update `chain_id` to the park label. For position 1, also set `chain_position` to 1. If `chain_id` was already set (inherited from pickup), keep it.
-   3. **Archive path match:** If no active match, check if an entry with the same `archive_path` exists → update in place (existing behavior).
-   4. **New entry:** Otherwise append a new entry with all fields including the new ones.
-
-   **Manifest entry schema (archived):**
-   ```json
-   {
-     "id": "<YYYY-MM-DD>-<label>",
-     "project": "<project-name>",
-     "date": "<YYYY-MM-DD>",
-     "label": "<label>",
-     "summary": "<first heading text from TLDR.md>",
-     "source_dir": "<absolute path to cwd>",
-     "archive_path": "sessions/<project>/<YYYY-MM-DD>-<label>",
-     "branch": "<git branch or null>",
-     "artifacts": ["TLDR.md", "HONE.md"],
-     "tags": ["elixir", "auth"],
-     "type": "session",
-
-     "status": "archived",
-     "session_id": "<session-uuid>",
-     "return_to": "cd ~/path && claude --resume <session-uuid>",
-
-     "chain_id": "<label or session-id>",
-     "chain_position": 1,
-     "previous_session_id": null,
-
-     "started_at": "<ISO-8601>",
-     "last_activity": "<ISO-8601>",
-     "last_exchange": {
-       "user": { "text": "...", "timestamp": "..." },
-       "assistant": { "text": "...", "timestamp": "..." }
-     },
-     "skills_used": ["tldr", "relay", "hone", "park"]
-   }
-   ```
-
-   **Tags** — Auto-detect 2-5 tags from TLDR.md content:
-   - Languages: elixir, python, javascript, typescript, ruby, go, rust, sql, bash, powershell
-   - Frameworks: phoenix, ecto, oban, react, next, absinthe, liveview
-   - Topics: debugging, performance, migration, refactor, investigation, auth, deployment, testing, infrastructure
-
-10. **Write chain metadata to relay baton** — After writing the manifest, append a machine-readable comment block to `./.stoobz/CONTEXT_FOR_NEXT_SESSION.md`:
-
-    ```
-    <!-- session-kit-chain
-    chain_id: <resolved chain_id>
-    session_id: <this session's uuid>
-    chain_position: <this session's position>
-    -->
-    ```
-
-    This block is what `/pickup` reads to continue the chain in the next session. Append it at the end of the file, after all other content.
-
-11. **Print summary:**
-
-```
-Session parked and archived.
-
-  Archive:   ~/.stoobz/sessions/<project>/<date-label>/
-  Artifacts: TLDR.md, HONE.md, CONTEXT_FOR_NEXT_SESSION.md
-  Relay:     .stoobz/CONTEXT_FOR_NEXT_SESSION.md (stays for /pickup)
-  Tags:      elixir, phoenix, auth
-  Session:   <uuid-first-8>... (archived)
-  Chain:     <chain_id> (node <N> of <N>)
-
-  /pickup  — resume from this directory (continues chain)
-  /index   — find past sessions
+```bash
+echo "$TLDR_BODY"  | sk write-artifact --skill park --artifact TLDR.md --content-stdin
+echo "$RELAY_BODY" | sk write-artifact --skill park --artifact CONTEXT_FOR_NEXT_SESSION.md --content-stdin
+echo "$HONE_BODY"  | sk write-artifact --skill park --artifact HONE.md --content-stdin
 ```
 
-- **Session** shows the first 8 characters of the session UUID.
-- **Chain** shows the chain_id and this session's position. If this is the only session in the chain, show "(node 1 of 1)". If chain_id is null (no chain), omit this line.
+`--skill park` (not `tldr` / `relay` / `hone`) so the ledger attributes the writes to the park ceremony — "what wrote this artifact" stays answerable when /park runs the same artifacts the individual skills also produce.
+
+Each call performs the four-step durable-first protocol: checkin precondition → archive write → verify → ledger append → cwd mirror. See [write-artifact-protocol.md](../write-artifact-protocol.md).
+
+### 4. Resolve label (first match wins)
+
+| Priority | Source | Use when |
+|----------|--------|----------|
+| 1 | `/park <label>` argument | Operator passed an explicit label |
+| 2 | Git branch name | Branch is not `main` / `master` / `develop` |
+| 3 | Slugified first heading of just-written `TLDR.md` | No useful branch name |
+| 4 | (empty — date-only archive) | All else fails |
+
+Slugify rules: lowercase, ASCII, alphanumeric + `-`, max 50 chars, no leading/trailing `-`.
+
+### 5. Resolve summary
+
+Use the title of the just-written TLDR (the text after `# TLDR: ` on the first heading line). If the heading is bare `# TLDR`, fall back to the first paragraph (1 line, ~80 chars max).
+
+### 6. Auto-detect tags (2–5)
+
+Scan `$TLDR_BODY` (case-insensitive) for matches in:
+
+- **Languages:** elixir, python, javascript, typescript, ruby, go, rust, sql, bash, powershell
+- **Frameworks:** phoenix, ecto, oban, react, next, absinthe, liveview
+- **Topics:** debugging, performance, migration, refactor, investigation, auth, deployment, testing, infrastructure
+
+Pick 2–5 most-mentioned terms. Tags are comma-separated in the next step.
+
+### 7. Finalize via the substrate
+
+```bash
+sk park-finalize --label "$LABEL" --summary "$SUMMARY" --tags "$TAGS"
+```
+
+`sk park-finalize`:
+
+1. Reads the ledger (`<active-dir>/.session-artifacts.json`) as the authoritative artifact list, dedupe-by-name last-write-wins.
+2. Verifies each ledger entry exists at `<active-dir>/<name>` — surfaces missing files as a warning, continues.
+3. Renames `<sid>-active/` → `<YYYY-MM-DD>-<label>/` (with `-2`, `-3`, ... collision suffix).
+4. Atomic manifest RMW: flips `status` to `archived`; populates `id`, `label`, `summary`, `date`, `archive_path`, `artifacts`, `tags`. Respects inherited `chain_id`, `chain_position`, `previous_session_id`, `parent_chain_id`, `checkpoint_nodes`. If first-node (chain_position null or 1, chain_id null or == session_id), sets `chain_id` = `<label>`.
+5. Appends `<!-- session-kit-chain ... -->` block to `./.stoobz/CONTEXT_FOR_NEXT_SESSION.md` (the relay baton stays in cwd for `/pickup`).
+6. Prints summary (Archive path, Artifacts, Relay, Tags, Session UUID prefix, Chain).
+
+## Arguments (orchestrator level)
+
+| Position | Meaning | Default |
+|----------|---------|---------|
+| `<label>` | Override the label-resolution chain | (resolved per step 4) |
+
+Pass-throughs the orchestrator may set on `sk park-finalize`:
+
+| Flag | When to use |
+|------|-------------|
+| `--chain-id <id>` | Operator explicitly wants a different chain name (rare) |
+| `--no-chain-block` | Operator explicitly suppresses chain metadata block (rare) |
+
+## Exit Codes
+
+`sk park-finalize` returns:
+
+| Code | Meaning | Caller behavior |
+|------|---------|-----------------|
+| `0` | Session archived (or already archived — friendly no-op) | Done |
+| `1` | Durability failure (rename, mkdir, manifest update) | Surface error; do not claim success |
+| `2` | Warning (missing ledger artifacts, chain block append failed) | Mention the warning; archive itself is good |
+| `3` | Usage error | Fix invocation |
+
+The three `sk write-artifact` calls follow their own exit-code table — see [write-artifact-protocol.md](../write-artifact-protocol.md). If any of them returns 1, abort the orchestrator before calling `sk park-finalize` — partial archives are not finalizable.
 
 ## `--archive-system` — Retroactive Cleanup
 
-When invoked as `/park --archive-system`, skip artifact generation and instead archive existing scattered `.stoobz/` directories as complete units.
+When invoked as `/park --archive-system`, skip the Process above and run the retroactive cleanup flow for legacy scattered `.stoobz/` directories. This mode is **operator-driven, interactive, and rarely runs** — it has not been migrated to a `sk` subcommand and remains prose-driven here.
 
-### Flags
+See the dedicated reference doc (TODO Phase 2D): `park/archive-system.md`. Until that lands, the prose for `--archive-system` lives in commit `4234da7^` of this skill (pre-Phase-2C version) — pull it back from git history if/when the flow is needed.
 
-| Flag | Behavior |
-|------|----------|
-| `--select` | Interactive picker — present table, user picks which to archive **(DEFAULT)** |
-| `--all` | Archive everything found, no prompting |
-| `--dry-run` | Show what would happen, take no action |
-| `--clean` | Auto-remove originals after verified archive (default: ask per-source) |
-
-Flags combine: `--all --clean` archives and cleans everything. `--dry-run --all` shows full plan.
-
-### Step 1 — Scan
-
-Run `find ~ -maxdepth 4 -type d -name ".stoobz"` to find all `.stoobz/` directories.
-
-**Skip:** any `.stoobz/` that is under `~/.stoobz/` (already archived). Skip empty dirs.
-
-Also scan for **loose artifacts** — `TLDR.md`, `RETRO.md`, `HANDOFF.md`, `HONE.md`, `CONTEXT_FOR_NEXT_SESSION.md`, `INVESTIGATION_SUMMARY.md`, `INVESTIGATION_CONTEXT.md` — sitting in project roots (not inside any `.stoobz/`), not under `~/.stoobz/`. These are legacy artifacts from before the `.stoobz/` convention.
-
-### Step 2 — Build session units
-
-Classify each discovered `.stoobz/` directory:
-
-| Pattern | Structure | Result |
-|---------|-----------|--------|
-| **A — Flat files** | `.stoobz/` contains only files (no subdirs) | One session unit — `cp -r` everything |
-| **B — Subdirectories** | `.stoobz/` contains only subdirs | Each subdir is a separate session unit |
-| **C — Mixed** | `.stoobz/` has both files and subdirs | Each subdir → separate unit; loose files → one additional unit |
-
-**Loose artifacts** found in project roots are grouped by project into one additional unit per project.
-
-For each session unit, resolve:
-
-- **Project** — nearest git repo basename (via `git -C <path> rev-parse --show-toplevel`), or parent directory basename
-- **Label** — subdir name if from Pattern B/C, else slugified first heading from TLDR.md (max 50 chars, lowercase, hyphens), else parent directory name
-- **Date** — most recent mtime among files in the unit
-- **Summary** — first heading from TLDR.md if present, else first heading from any `.md` file in the unit, else "No summary"
-- **Files** — full list of filenames in the unit
-
-### Step 3 — Present findings
-
-Show all discovered units in a table:
-
-```markdown
-## Found Session Units
-
-| # | Source | Files | Date | Summary |
-|---|--------|-------|------|---------|
-| 1 | ~/my-app/.stoobz/ (7 files) | PLAN.md, deployment-methods.md, +5 | 2026-02-12 | USB bundle |
-| 2 | ~/dotfiles/.stoobz/ci-pipeline/ (3 files) | TLDR.md, HONE.md, +1 | 2026-02-12 | Git cleanup |
-| 3 | ~/dotfiles/.stoobz/configs/ (5 files) | direnv, gh, +3 | 2026-02-12 | No summary |
-| 4 | ~/work/api/ (2 loose files) | TLDR.md, RETRO.md | 2026-02-08 | API rate limiting |
-```
-
-- `--select` (default): Show table, then ask "Enter numbers to archive (e.g. 1,3,4), or `all`:"
-- `--all`: Show table, then proceed without prompting
-- `--dry-run`: Show table with the header "## Dry Run — No changes will be made", then stop
-
-### Step 4 — Archive each selected unit
-
-For each selected unit:
-
-1. **Build archive path:** `~/.stoobz/sessions/<project>/<YYYY-MM-DD>-<label>/`
-   - If path exists, append `-2`, `-3`, etc.
-   - `mkdir -p` the path
-
-2. **Copy entire subtree:** `cp -r <source>/* <archive-path>/`
-   - For Pattern A: copy all files from `.stoobz/`
-   - For Pattern B/C subdirs: copy all files from the subdir
-   - For Pattern C loose files: copy the loose files
-   - For loose artifacts: copy the individual files
-   - `CONTEXT_FOR_NEXT_SESSION.md` is included in the archive (these are old sessions nobody is picking up)
-
-3. **Verify copy:** compare file count in source vs archive. Only proceed to cleanup if counts match.
-
-4. **Update manifest** — same schema as normal `/park` (Step 9 above), with `"type": "session"` and `artifacts` array listing **all files** in the unit.
-
-### Step 5 — Clean up originals
-
-- **Default:** ask per-source: "Remove originals from `<path>`? [y/N]"
-- **`--clean`:** auto-remove without asking
-- **Partially-selected `.stoobz/` dirs (Pattern B/C):** only remove the archived subdirs or files, not the entire `.stoobz/` directory
-- **Never remove** until copy verification passes (Step 4.3)
-
-### Step 6 — Print summary
-
-```
-Archive system complete.
-
-  Archived: 4 session units
-  Manifest: ~/.stoobz/manifest.json (4 entries added)
-  Cleaned:  3 source locations removed
-
-  Run /index to browse all sessions.
-```
+The supported flags (`--select` default, `--all`, `--dry-run`, `--clean`) and their semantics are unchanged from the pre-Phase-2C spec.
 
 ## Rules
 
-- **All or nothing** (Phase 1) — Generate all three core artifacts. For individual artifacts, use the specific skill.
-- **Always archive** — Phase 2 runs automatically after Phase 1. No flag needed.
-- **Respect existing files** — Each skill handles its own file existence check.
+- **All or nothing** — Generate all three core artifacts (TLDR + RELAY + HONE). For individual artifacts, use the specific skill directly.
+- **Always finalize** — After writes succeed, `sk park-finalize` runs automatically. No flag needed.
+- **No questions** — Generate all three without asking. Use best judgment for label and tags.
 - **Don't re-explain** — Just execute. The user wants results, not descriptions.
-- **No questions** — Generate all three without asking. Use best judgment for content.
-- **CONTEXT_FOR_NEXT_SESSION.md is duplicated** (normal mode) — Copied to archive for completeness AND stays in `./.stoobz/` as the relay baton for `/pickup`. In `--archive-system` mode, it gets archived too (old sessions nobody is picking up).
-- **Manifest is append-only** — Never remove entries, only add or update in place.
-- **Idempotent** — Re-parking the same session updates the existing archive entry rather than creating duplicates.
+- **CONTEXT_FOR_NEXT_SESSION.md stays in cwd** — The mirror is the relay baton `/pickup` reads next session. `sk park-finalize` appends the chain block to it after finalization.
+- **Idempotent re-park** — If the session is already archived, `sk park-finalize` exits 0 with a "nothing to do" message. The original archive is preserved.
+- **Respect inherited chain metadata** — If `/pickup` inherited chain fields, `sk park-finalize` keeps them. The substrate handles this; the orchestrator does not need to reason about it.
+
+## See also
+
+- [tldr/SKILL.md](../tldr/SKILL.md), [relay/SKILL.md](../relay/SKILL.md), [hone/SKILL.md](../hone/SKILL.md) — body composition rules
+- [checkin/SKILL.md](../checkin/SKILL.md) — precondition each `sk write-artifact` triggers internally
+- [write-artifact-protocol.md](../write-artifact-protocol.md) — the durable-first contract
+- `sk park-finalize --help`, `sk write-artifact --help` — full arg / exit-code / JSON reference
+- [ADR-0004](~/.stoobz/kb/adr/0004-session-kit-artifact-durability.md) — why /park is finalization, not copy
+- [ADR-0005](~/.stoobz/kb/adr/0005-skills-as-thin-orchestrators-of-versioned-scripts.md) — why this skill is a thin wrapper

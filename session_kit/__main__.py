@@ -10,6 +10,7 @@ from __future__ import annotations
 import typer
 
 from . import checkin as checkin_cmd
+from . import park_finalize as park_finalize_cmd
 from . import write_artifact as write_artifact_cmd
 
 app = typer.Typer(
@@ -21,6 +22,9 @@ app = typer.Typer(
 app.command(name="checkin", help=checkin_cmd.command.__doc__)(checkin_cmd.command)
 app.command(name="write-artifact", help=write_artifact_cmd.command.__doc__)(
     write_artifact_cmd.command
+)
+app.command(name="park-finalize", help=park_finalize_cmd.command.__doc__)(
+    park_finalize_cmd.command
 )
 
 
