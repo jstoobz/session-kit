@@ -463,3 +463,87 @@ def test_checkpoint_nodes_rejects_non_numeric_tokens(sk_root, fake_home, project
         app, ["checkin", "--silent", "--checkpoint-nodes", "bad,csv"]
     )
     assert result.exit_code == EXIT_USAGE
+
+
+# --- Chain block parser: prose-leak resilience ----------------------------
+
+
+def test_chain_block_after_prose_mention():
+    body = (
+        "# Relay baton body\n"
+        "\n"
+        "See the <!-- session-kit-chain ... --> block at the bottom for the\n"
+        "machine-readable chain state.\n"
+        "\n"
+        "<!-- session-kit-chain\n"
+        "chain_id: real-chain\n"
+        "session_id: aaaa-bbbb-cccc-dddd\n"
+        "chain_position: 3\n"
+        "-->\n"
+    )
+    parsed = checkin_mod._parse_chain_block(body)
+    assert parsed == {
+        "chain_id": "real-chain",
+        "session_id": "aaaa-bbbb-cccc-dddd",
+        "chain_position": "3",
+    }
+
+
+def test_multiple_real_chain_blocks_takes_last():
+    body = (
+        "<!-- session-kit-chain\n"
+        "chain_id: first-chain\n"
+        "session_id: sid-1\n"
+        "chain_position: 1\n"
+        "-->\n"
+        "\n"
+        "<!-- session-kit-chain\n"
+        "chain_id: second-chain\n"
+        "session_id: sid-2\n"
+        "chain_position: 2\n"
+        "-->\n"
+    )
+    parsed = checkin_mod._parse_chain_block(body)
+    assert parsed == {
+        "chain_id": "second-chain",
+        "session_id": "sid-2",
+        "chain_position": "2",
+    }
+
+
+def test_prose_only_returns_none():
+    body = (
+        "# Relay baton body\n"
+        "\n"
+        "The <!-- session-kit-chain ... --> marker is documented in /relay's\n"
+        "SKILL.md but no real block is present.\n"
+    )
+    assert checkin_mod._parse_chain_block(body) is None
+
+
+def test_inherit_chain_from_with_prose_leak_baton(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    stoobz = project_cwd / ".stoobz"
+    stoobz.mkdir(parents=True, exist_ok=True)
+    baton = stoobz / "CONTEXT_FOR_NEXT_SESSION.md"
+    baton.write_text(
+        "# Relay baton body\n"
+        "\n"
+        "See the <!-- session-kit-chain ... --> block at the bottom for the\n"
+        "machine-readable chain state.\n"
+        "\n"
+        "<!-- session-kit-chain\n"
+        "chain_id: chain-inheritance-smoke-test\n"
+        "session_id: bf7e0a76-ad7b-464a-b0b7-dad053ca3952\n"
+        "chain_position: 1\n"
+        "-->\n",
+        encoding="utf-8",
+    )
+    result = runner.invoke(
+        app, ["checkin", "--silent", "--invoking", "pickup", "--inherit-chain-from", str(baton)]
+    )
+    assert result.exit_code == EXIT_OK, result.stdout + result.stderr
+    entry = _load_manifest(sk_root)["sessions"][0]
+    assert entry["chain_id"] == "chain-inheritance-smoke-test"
+    assert entry["previous_session_id"] == "bf7e0a76-ad7b-464a-b0b7-dad053ca3952"
+    assert entry["chain_position"] == 2

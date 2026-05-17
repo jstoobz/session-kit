@@ -156,22 +156,26 @@ _CHAIN_BLOCK_RE = re.compile(
 
 
 def _parse_chain_block(text: str) -> dict | None:
-    """Extract the first `<!-- session-kit-chain ... -->` block as a key:value dict.
+    """Extract the trailing structured `<!-- session-kit-chain ... -->` block as a key:value dict.
 
-    Returns None if no block found. Unknown keys are preserved; numeric coercion
-    happens in `_chain_inheritance_from_baton`.
+    Iterates every match and returns the LAST one that yields non-empty key:value
+    pairs. This skips prose mentions of the marker (which have no colon-bearing
+    lines and parse to an empty dict) and, when multiple real blocks exist
+    (e.g., a session re-parked), resolves to the most recent — matching the WAL
+    semantics of last-write-wins for chain assignment.
     """
-    m = _CHAIN_BLOCK_RE.search(text)
-    if not m:
-        return None
-    parsed: dict[str, str] = {}
-    for raw in m.group(1).splitlines():
-        line = raw.strip()
-        if not line or ":" not in line:
-            continue
-        key, _, value = line.partition(":")
-        parsed[key.strip()] = value.strip()
-    return parsed or None
+    last_valid: dict[str, str] | None = None
+    for m in _CHAIN_BLOCK_RE.finditer(text):
+        parsed: dict[str, str] = {}
+        for raw in m.group(1).splitlines():
+            line = raw.strip()
+            if not line or ":" not in line:
+                continue
+            key, _, value = line.partition(":")
+            parsed[key.strip()] = value.strip()
+        if parsed:
+            last_valid = parsed
+    return last_valid
 
 
 def _coerce_int(value: str) -> int | None:
