@@ -5,38 +5,30 @@ description: Generate a HANDOFF.md for sharing investigation results or session 
 
 # Handoff
 
-Generate a `HANDOFF.md` for sharing with teammates who need full context on what happened.
-
-> **Archive root:** Resolve `$SESSION_KIT_ROOT` (default: `~/.stoobz`). All `~/.stoobz/` paths below use this root.
-
-## Check-In (precondition)
-
-Before the Process section runs, invoke `/checkin` in **silent mode** as a precondition. Export `INVOKING_SKILL=handoff` first so `/checkin` records this skill in the session's `skills_used` on its behalf. See [checkin/SKILL.md](../checkin/SKILL.md) for the protocol details (three-tier session-ID resolution, active-dir + ledger creation, scaffolding-idempotent re-entry with liveness refresh).
-
-If `/checkin` aborts (mkdir or ledger creation failure — the only durability conditions that fail loudly), this skill aborts too. Do not proceed to the Process section. Do not write any artifact.
-
-The canonical pattern: inline `/checkin`'s Reference Implementation at the top of this skill's single bash invocation (shell variables — `SESSION_ID`, `ACTIVE_DIR`, `LEDGER`, `NOW` — must stay in scope for any artifact write that follows). All shell work in this skill MUST run in one `Bash` tool invocation; see [checkin/SKILL.md § Execution Discipline](../checkin/SKILL.md#execution-discipline).
+Generate a `HANDOFF.md` for sharing with teammates who need full context on what happened. This is human-to-human communication; strip session mechanics and Claude artifacts. Compose the body in conversation; `sk write-artifact` writes durably, appends the ledger, and mirrors to `cwd/.stoobz/HANDOFF.md`.
 
 ## Process
 
-1. **Check for existing file** — Read `./.stoobz/HANDOFF.md` if it exists. If found:
-   - Preserve previous versions under a `## Previous Handoff` heading
-   - Add new content as the primary section
+1. **Rolling history — read the previous archive first.** If `~/.stoobz/sessions/<project>/<sid>-active/HANDOFF.md` exists, preserve its prior content under a `## Previous Handoff` heading; new content goes on top.
 
-2. **Extract from conversation:**
-   - The problem/task and why it matters (business context, not just technical)
+2. **Extract from conversation**:
+   - The problem / task and why it matters (business context, not just technical)
    - What was tried and what was learned
    - Current state — what's done, what's not
    - Recommendations with rationale
    - Any risks, caveats, or "watch out for" items
    - Links to relevant files, PRs, Jira tickets, dashboards
 
-3. **Calibrate audience** — This is for engineers who:
+3. **Calibrate audience** — engineers who:
    - Know the codebase but weren't in this session
    - Need enough context to take over or review the work
    - Don't need to know about Claude skills, prompt iterations, or session mechanics
 
-4. Write `.stoobz/HANDOFF.md` in the current working directory.
+4. **Compose `HANDOFF_BODY`** in the [Output Format](#output-format) below, then a single bash invocation:
+
+   ```bash
+   sk write-artifact --skill handoff --artifact HANDOFF.md --content-stdin <<< "$HANDOFF_BODY"
+   ```
 
 ## Output Format
 
@@ -52,11 +44,11 @@ The canonical pattern: inline `/checkin`'s Reference Implementation at the top o
 
 ## Background
 
-{Why this work happened — the business problem or technical need. 2-3 sentences.}
+{Why this work happened — business problem or technical need. 2-3 sentences.}
 
 ## What Was Done
 
-{Chronological or logical summary of the work. Include specifics.}
+{Chronological or logical summary. Include specifics.}
 
 ### Key Findings
 
@@ -90,12 +82,30 @@ The canonical pattern: inline `/checkin`'s Reference Implementation at the top o
 _Handoff generated {date} — reach out to {author} for questions._
 ```
 
+## Exit Codes
+
+`sk write-artifact` returns:
+
+| Code | Meaning | Caller behavior |
+|------|---------|-----------------|
+| `0` | Durable write + mirror both succeeded | Done |
+| `1` | Durability failure | Surface error; do not claim success |
+| `2` | Durable write succeeded; cwd mirror failed | Mention the warning; archive is authoritative |
+| `3` | Usage error | Fix invocation |
+
 ## Rules
 
-- **No Claude artifacts** — Strip references to skills, prompts, session mechanics. This is for humans.
-- **Business context first** — Start with "why" before "what". Teammates need to understand importance.
-- **Evidence-based** — Include actual numbers, error messages, query results. Not "it seems slow" but "p99 latency hit 4.2s."
-- **Actionable recommendations** — Each recommendation should have enough context that someone can act on it without asking follow-up questions.
-- **Link everything** — Jira tickets, PRs, dashboards, relevant files. Make it easy to dig deeper.
-- **Skip sections with no content** — Don't include empty Risks or References sections.
-- Write to `./.stoobz/HANDOFF.md` unless the user specifies a different path
+- **No Claude artifacts** — strip references to skills, prompts, session mechanics. This is for humans.
+- **Business context first** — start with "why" before "what".
+- **Evidence-based** — actual numbers, error messages, query results. Not "it seems slow" but "p99 latency hit 4.2s."
+- **Actionable recommendations** — enough context per item that a teammate can act without asking follow-up questions.
+- **Link everything** — Jira tickets, PRs, dashboards, relevant files.
+- **Skip empty sections** — no empty Risks or References blocks.
+- The canonical write location is `<active-archive>/HANDOFF.md`; `cwd/.stoobz/HANDOFF.md` is the best-effort mirror.
+- The ledger entry's `name` is `HANDOFF.md`.
+
+## See also
+
+- [checkin/SKILL.md](../checkin/SKILL.md), [write-artifact-protocol.md](../write-artifact-protocol.md)
+- `sk write-artifact --help`
+- [ADR-0005](~/.stoobz/kb/adr/0005-skills-as-thin-orchestrators-of-versioned-scripts.md)

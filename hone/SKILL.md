@@ -5,44 +5,30 @@ description: Capture the session's initial user prompt, analyze its effectivenes
 
 # Hone
 
-Capture the original session prompt, analyze it, and generate an optimized version. Builds prompt engineering intuition over time.
-
-> **Archive root:** Resolve `$SESSION_KIT_ROOT` (default: `~/.stoobz`). All `~/.stoobz/` paths below use this root.
-
-## Check-In (precondition)
-
-Before the Process section runs, invoke `/checkin` in **silent mode** as a precondition. Export `INVOKING_SKILL=hone` first so `/checkin` records this skill in the session's `skills_used` on its behalf. See [checkin/SKILL.md](../checkin/SKILL.md) for the protocol details (three-tier session-ID resolution, active-dir + ledger creation, scaffolding-idempotent re-entry with liveness refresh).
-
-If `/checkin` aborts (mkdir or ledger creation failure — the only durability conditions that fail loudly), this skill aborts too. Do not proceed to the Process section. Do not write any artifact.
-
-The canonical pattern: inline `/checkin`'s Reference Implementation at the top of this skill's single bash invocation (shell variables — `SESSION_ID`, `ACTIVE_DIR`, `LEDGER`, `NOW` — must stay in scope for any artifact write that follows). All shell work in this skill MUST run in one `Bash` tool invocation; see [checkin/SKILL.md § Execution Discipline](../checkin/SKILL.md#execution-discipline).
+Capture the original session prompt, analyze it, and generate an optimized version. Builds prompt-engineering intuition over time. Compose the body in conversation; `sk write-artifact` writes durably, appends the ledger, and mirrors to `cwd/.stoobz/HONE.md`.
 
 ## Process
 
-1. **Check for existing file** — Read `./.stoobz/HONE.md` if it exists. If found:
-   - Preserve previous entries under a `## Previous Prompts` heading
-   - Add new entry as the primary (top) section with updated timestamp
+1. **Rolling history — read the previous archive first.** If `~/.stoobz/sessions/<project>/<sid>-active/HONE.md` exists, preserve its prior content under a `## Previous Prompts` heading; new entry goes on top with a fresh timestamp. (Archive path uses `SESSION_KIT_ROOT`, defaulting to `~/.stoobz`.)
 
-2. **Identify the initial prompt** — Find the user's first substantive message that defined the session's work. This is the raw prompt exactly as written.
+2. **Identify the initial prompt** — find the user's first substantive message that defined the session's work. Copy it verbatim; warts included.
 
-3. **Analyze the prompt** against these dimensions:
+3. **Analyze the prompt** across these dimensions:
    - **Clarity** — Was the goal unambiguous?
    - **Scope** — Was the scope well-defined or open-ended?
    - **Context provided** — Did it give enough background?
-   - **Constraints** — Were boundaries/requirements stated?
+   - **Constraints** — Were boundaries / requirements stated?
    - **Actionability** — Could Claude act immediately or needed clarification?
 
-4. **Generate the optimized prompt** — Rewrite incorporating:
-   - Everything learned during the session
-   - Context that had to be discovered/clarified mid-session
-   - Specific file paths, module names, or technical details that emerged
-   - Explicit scope boundaries
-   - Skills to load
-   - Clear success criteria
+4. **Generate the optimized prompt** — rewrite incorporating everything learned during the session: discovered context, specific paths / module names, explicit scope boundaries, skills to load, clear success criteria. The result must be self-contained — pasteable cold into a new session.
 
-5. **Add coaching notes** — Brief, specific tips about what made the difference between the original and optimized versions.
+5. **Add coaching notes** — brief, session-specific tips. Generic advice ("be specific") is useless; ground every tip in what actually happened here.
 
-6. Write `.stoobz/HONE.md` in the current working directory.
+6. **Compose `HONE_BODY`** in the [Output Format](#output-format) below, then a single bash invocation:
+
+   ```bash
+   sk write-artifact --skill hone --artifact HONE.md --content-stdin <<< "$HONE_BODY"
+   ```
 
 ## Output Format
 
@@ -74,15 +60,13 @@ The canonical pattern: inline `/checkin`'s Reference Implementation at the top o
 
 ## Optimized Prompt
 
-> {The rewritten prompt — ready to copy-paste into a new session}
+> {The rewritten prompt — ready to copy-paste into a new session.}
 >
-> {This should be self-contained: include context, constraints, relevant paths,
-> skills to load, and clear success criteria. A new Claude session reading only
-> this prompt should be able to start working immediately.}
+> {Self-contained: include context, constraints, relevant paths, skills to load,
+> and clear success criteria. A new Claude session reading only this prompt
+> should be able to start working immediately.}
 
 ## Prompt Tips
-
-{2-4 bullet points — specific, actionable lessons from this prompt. Not generic advice.}
 
 - {Tip grounded in what actually happened this session}
 - {Tip about what context/constraint would have saved time}
@@ -92,11 +76,29 @@ The canonical pattern: inline `/checkin`'s Reference Implementation at the top o
 _Generated by /hone — building prompt intuition one session at a time._
 ```
 
+## Exit Codes
+
+`sk write-artifact` returns:
+
+| Code | Meaning | Caller behavior |
+|------|---------|-----------------|
+| `0` | Durable write + mirror both succeeded | Done |
+| `1` | Durability failure | Surface error; do not claim success |
+| `2` | Durable write succeeded; cwd mirror failed | Mention the warning; archive is authoritative |
+| `3` | Usage error | Fix invocation |
+
 ## Rules
 
-- **Verbatim original** — Copy the exact original prompt, warts and all. No editing.
-- **Honest analysis** — If the prompt was great, say so. If it was vague, say that too. No flattery.
-- **Optimized != longer** — The best prompts are concise. Add specificity, not word count.
-- **Session-specific tips** — Generic prompt advice ("be specific") is useless. Ground every tip in what actually happened.
-- **The optimized prompt must be self-contained** — Someone should be able to paste it cold into a new session and get productive immediately.
-- Write to `./.stoobz/HONE.md` unless the user specifies a different path
+- **Verbatim original** — copy the exact original prompt; no editing.
+- **Honest analysis** — if the prompt was great, say so. If it was vague, say that too. No flattery.
+- **Optimized != longer** — best prompts are concise; add specificity, not word count.
+- **Session-specific tips** — every tip grounded in what actually happened here.
+- **The optimized prompt must be self-contained** — paste-and-go.
+- The canonical write location is `<active-archive>/HONE.md`; `cwd/.stoobz/HONE.md` is the best-effort mirror.
+- The ledger entry's `name` is `HONE.md`.
+
+## See also
+
+- [checkin/SKILL.md](../checkin/SKILL.md), [write-artifact-protocol.md](../write-artifact-protocol.md)
+- `sk write-artifact --help`
+- [ADR-0005](~/.stoobz/kb/adr/0005-skills-as-thin-orchestrators-of-versioned-scripts.md)

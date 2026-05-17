@@ -5,32 +5,19 @@ description: Generate a CONTEXT_FOR_NEXT_SESSION.md that captures everything nee
 
 # Context For Next Session
 
-Generate a `CONTEXT_FOR_NEXT_SESSION.md` that enables a new Claude session to resume work with zero re-explanation.
-
-> **Archive root:** Resolve `$SESSION_KIT_ROOT` (default: `~/.stoobz`). All `~/.stoobz/` paths below use this root.
-
-## Check-In (precondition)
-
-Before the Process section runs, invoke `/checkin` in **silent mode** as a precondition. Export `INVOKING_SKILL=relay` first so `/checkin` records this skill in the session's `skills_used` on its behalf. See [checkin/SKILL.md](../checkin/SKILL.md) for the protocol details (three-tier session-ID resolution, active-dir + ledger creation, scaffolding-idempotent re-entry with liveness refresh).
-
-If `/checkin` aborts (mkdir or ledger creation failure — the only durability conditions that fail loudly), this skill aborts too. Do not proceed to the Process section. Do not write any artifact.
-
-The canonical pattern: inline `/checkin`'s Reference Implementation at the top of this skill's single bash invocation (shell variables — `SESSION_ID`, `ACTIVE_DIR`, `LEDGER`, `NOW` — must stay in scope for any artifact write that follows). All shell work in this skill MUST run in one `Bash` tool invocation; see [checkin/SKILL.md § Execution Discipline](../checkin/SKILL.md#execution-discipline).
+Compose a machine-readable session-resumption document in conversation; hand it to `sk write-artifact`, which checks in, writes the archive durably, appends a ledger entry, and mirrors to `cwd/.stoobz/CONTEXT_FOR_NEXT_SESSION.md`. One binary call handles every mechanical step.
 
 ## Process
 
-1. **Check for existing file** — Read `./.stoobz/CONTEXT_FOR_NEXT_SESSION.md` if it exists. If found:
-   - Preserve previous context under a `## Previous Session Context` heading
-   - Add new content as the primary (top) section with updated timestamp
-   - Merge open items: check off completed ones, carry forward remaining
+1. **Rolling history — read the previous archive first.** Before composing the new body, read the active-archive's prior copy if it exists. Path: `~/.stoobz/sessions/<project>/<sid>-active/CONTEXT_FOR_NEXT_SESSION.md` (or whatever `SESSION_KIT_ROOT` resolves to). If present, the new body keeps the latest content on top and tucks the prior content under a `## Previous Session Context` heading. Merge open items: check off completed ones, carry forward what remains.
 
-2. **Gather session state:**
+2. **Gather session state**:
    - Current git branch, uncommitted changes, recent commits
    - Working directory and key file paths referenced in conversation
    - Environment details (which env was targeted: local, QA, UAT, prod)
-   - Skills invoked during this session (scan conversation for `/skill-name` invocations)
+   - Skills invoked during this session (scan conversation for `/skill-name` invocations; exclude session-kit lifecycle skills)
 
-3. **Extract from conversation:**
+3. **Extract from conversation**:
    - What we were working on and why
    - Where we left off (specific point of progress)
    - Decisions made that constrain future work
@@ -38,9 +25,15 @@ The canonical pattern: inline `/checkin`'s Reference Implementation at the top o
    - Known issues, blockers, or gotchas discovered
    - Suggested next actions in priority order
 
-4. Write `.stoobz/CONTEXT_FOR_NEXT_SESSION.md` in the current working directory.
+4. **Compose `RELAY_BODY`** in the [Output Format](#output-format) below. Skip sections with no content.
 
-5. Confirm the file path.
+5. **Single bash invocation** — pipe `RELAY_BODY` into the binary:
+
+   ```bash
+   sk write-artifact --skill relay --artifact CONTEXT_FOR_NEXT_SESSION.md --content-stdin <<< "$RELAY_BODY"
+   ```
+
+   Confirmation prints; the cwd path appears unless the mirror failed (a warning is surfaced; the archive write is still good).
 
 ## Output Format
 
@@ -90,10 +83,6 @@ The canonical pattern: inline `/checkin`'s Reference Implementation at the top o
 
 ## Skills To Load
 
-{Auto-populated from skills invoked during this session. List each skill that was
-actively used (not just mentioned). Include a brief note on what it was used for.
-If no skills were invoked beyond session-kit lifecycle commands, omit this section.}
-
 - `/beam-expert` — OTP process debugging
 - `/use-db` — queried UAT eventstore
 
@@ -102,12 +91,30 @@ If no skills were invoked beyond session-kit lifecycle commands, omit this secti
 _Paste this document at the start of your next Claude Code session in this directory._
 ```
 
+## Exit Codes
+
+`sk write-artifact` returns:
+
+| Code | Meaning | Caller behavior |
+|------|---------|-----------------|
+| `0` | Durable write + mirror both succeeded | Done |
+| `1` | Durability failure (archive, verify, ledger, or precondition checkin) | Surface error; do not claim success |
+| `2` | Durable write succeeded; cwd mirror failed (warning already on stderr) | Mention the warning; the archive is authoritative |
+| `3` | Usage error (bad args) | Fix invocation |
+
 ## Rules
 
 - **Optimized for machine consumption** — this is for Claude to read, not just humans. Be precise about paths, branch names, and state.
-- **Include the "why" not just the "what"** — next session needs to understand intent, not just facts
-- **Concrete over abstract** — "check `lib/my_app/accounts/projectors/user_projector.ex` line 42" beats "look at the projector"
-- **Skip sections with no content** — don't include empty Gotchas or Decisions sections
-- **Auto-detect skills** — Scan the conversation for skill invocations (commands like `/beam-expert`, `/use-db`, etc.) and list them in Skills To Load. Exclude session-kit lifecycle skills (`/park`, `/relay`, `/tldr`, `/pickup`, `/hone`, `/retro`, `/handoff`, `/rca`, `/index`, `/persist`, `/sweep`, `/prime`) — those are infrastructure, not domain context.
-- **Skills recommendation** — always include which skills were loaded/useful so the next session can load them immediately
-- Write to `./.stoobz/CONTEXT_FOR_NEXT_SESSION.md` unless the user specifies a different path
+- **Include the "why" not just the "what"** — next session needs to understand intent, not just facts.
+- **Concrete over abstract** — "check `lib/my_app/accounts/projectors/user_projector.ex` line 42" beats "look at the projector."
+- **Skip sections with no content** — don't include empty Gotchas or Decisions sections.
+- **Auto-detect skills** — Scan the conversation for skill invocations (`/beam-expert`, `/use-db`, etc.). Exclude session-kit lifecycle skills (`/park`, `/relay`, `/tldr`, `/pickup`, `/hone`, `/retro`, `/handoff`, `/rca`, `/index`, `/persist`, `/sweep`, `/prime`, `/checkin`) — those are infrastructure, not domain context.
+- The canonical write location is `<active-archive>/CONTEXT_FOR_NEXT_SESSION.md`; `cwd/.stoobz/CONTEXT_FOR_NEXT_SESSION.md` is the best-effort mirror.
+- The ledger entry's `name` is `CONTEXT_FOR_NEXT_SESSION.md`.
+
+## See also
+
+- [checkin/SKILL.md](../checkin/SKILL.md) — the precondition `sk write-artifact` invokes silently
+- [write-artifact-protocol.md](../write-artifact-protocol.md) — the durable-first contract
+- `sk write-artifact --help` — full arg + exit-code + JSON-schema reference
+- [ADR-0005](~/.stoobz/kb/adr/0005-skills-as-thin-orchestrators-of-versioned-scripts.md) — why this skill is a thin wrapper
