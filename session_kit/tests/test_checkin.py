@@ -1,0 +1,265 @@
+"""Unit tests for sk checkin.
+
+Covers the three resolution tiers, first-checkin vs re-entry, JSON output,
+skills_used append rules per mode, last_exchange real-user filter, and the
+write-once / liveness-refresh discipline.
+"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+from typer.testing import CliRunner
+
+from session_kit import checkin as checkin_mod
+from session_kit.__main__ import app
+from session_kit.common import EXIT_DURABILITY_FAIL, EXIT_OK, EXIT_USAGE
+
+runner = CliRunner()
+
+
+def _load_manifest(sk_root: Path) -> dict:
+    return json.loads((sk_root / "manifest.json").read_text())
+
+
+def _load_ledger(active_dir: Path) -> dict:
+    return json.loads((active_dir / ".session-artifacts.json").read_text())
+
+
+# --- Tier resolution -------------------------------------------------------
+
+
+def test_tier1_jsonl_resolution(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    sid, _ = mock_jsonl_session()
+    result = checkin_mod.run_checkin(
+        cwd=project_cwd, mode="explicit", invoking=None, json_out=False, debug=False
+    )
+    assert result["session_id"] == sid
+    assert result["resolved_via"] == "jsonl"
+    assert result["is_first"] is True
+    assert Path(result["active_dir"]).is_dir()
+    assert Path(result["ledger"]).is_file()
+
+
+def test_tier3_synthesis_when_no_jsonl(sk_root, fake_home, project_cwd):
+    # No JSONL file written; expect tier-3 synthesis.
+    result = checkin_mod.run_checkin(
+        cwd=project_cwd, mode="explicit", invoking=None, json_out=False, debug=False
+    )
+    assert result["resolved_via"] == "synthesized"
+    cache = project_cwd / ".stoobz" / ".session-id"
+    assert cache.is_file()
+    assert cache.read_text().strip() == result["session_id"]
+
+
+def test_tier3_cached_reused(sk_root, fake_home, project_cwd):
+    # First call synthesizes; second call should be cached.
+    r1 = checkin_mod.run_checkin(
+        cwd=project_cwd, mode="silent", invoking=None, json_out=False, debug=False
+    )
+    r2 = checkin_mod.run_checkin(
+        cwd=project_cwd, mode="silent", invoking=None, json_out=False, debug=False
+    )
+    assert r1["session_id"] == r2["session_id"]
+    assert r2["resolved_via"] == "cached"
+
+
+# --- First-checkin vs re-entry ---------------------------------------------
+
+
+def test_first_then_reentry(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    r1 = checkin_mod.run_checkin(
+        cwd=project_cwd, mode="explicit", invoking=None, json_out=False, debug=False
+    )
+    assert r1["is_first"] is True
+    r2 = checkin_mod.run_checkin(
+        cwd=project_cwd, mode="explicit", invoking=None, json_out=False, debug=False
+    )
+    assert r2["is_first"] is False
+    assert r1["session_id"] == r2["session_id"]
+
+
+def test_reentry_does_not_modify_ledger_metadata(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    r1 = checkin_mod.run_checkin(
+        cwd=project_cwd, mode="silent", invoking="tldr", json_out=False, debug=False
+    )
+    led1 = _load_ledger(Path(r1["active_dir"]))
+    # Hand-edit the ledger to simulate an artifact write
+    led1["artifacts"].append({"name": "manual.md", "size_bytes": 1})
+    (Path(r1["ledger"])).write_text(json.dumps(led1, indent=2, sort_keys=True))
+
+    r2 = checkin_mod.run_checkin(
+        cwd=project_cwd, mode="silent", invoking="tldr", json_out=False, debug=False
+    )
+    led2 = _load_ledger(Path(r2["active_dir"]))
+    assert led2["artifacts"] == led1["artifacts"]
+    # Write-once metadata unchanged
+    assert led2["session_id"] == led1["session_id"]
+    assert led2["started_at"] == led1["started_at"]
+    assert led2["source_dir"] == led1["source_dir"]
+
+
+def test_reentry_refreshes_last_activity(sk_root, fake_home, project_cwd, mock_jsonl_session, monkeypatch):
+    mock_jsonl_session()
+    ts = iter(["2026-05-17T10:00:00Z", "2026-05-17T11:00:00Z"])
+    monkeypatch.setattr(checkin_mod, "now_iso", lambda: next(ts))
+    checkin_mod.run_checkin(cwd=project_cwd, mode="silent", invoking=None, json_out=False, debug=False)
+    checkin_mod.run_checkin(cwd=project_cwd, mode="silent", invoking=None, json_out=False, debug=False)
+    m = _load_manifest(sk_root)
+    entry = m["sessions"][0]
+    assert entry["last_activity"] == "2026-05-17T11:00:00Z"
+
+
+# --- skills_used append rules ---------------------------------------------
+
+
+def test_explicit_appends_checkin(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    checkin_mod.run_checkin(
+        cwd=project_cwd, mode="explicit", invoking=None, json_out=False, debug=False
+    )
+    entry = _load_manifest(sk_root)["sessions"][0]
+    assert entry["skills_used"] == ["checkin"]
+
+
+def test_silent_with_invoking_appends_skill(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    checkin_mod.run_checkin(
+        cwd=project_cwd, mode="silent", invoking="tldr", json_out=False, debug=False
+    )
+    entry = _load_manifest(sk_root)["sessions"][0]
+    assert entry["skills_used"] == ["tldr"]
+
+
+def test_silent_without_invoking_appends_nothing(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    checkin_mod.run_checkin(
+        cwd=project_cwd, mode="silent", invoking=None, json_out=False, debug=False
+    )
+    entry = _load_manifest(sk_root)["sessions"][0]
+    assert entry["skills_used"] == []
+
+
+def test_explicit_ignores_invoking(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    checkin_mod.run_checkin(
+        cwd=project_cwd, mode="explicit", invoking="relay", json_out=False, debug=False
+    )
+    entry = _load_manifest(sk_root)["sessions"][0]
+    assert entry["skills_used"] == ["checkin"]
+
+
+def test_skills_used_dedupes(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    for _ in range(3):
+        checkin_mod.run_checkin(
+            cwd=project_cwd, mode="silent", invoking="tldr", json_out=False, debug=False
+        )
+    entry = _load_manifest(sk_root)["sessions"][0]
+    assert entry["skills_used"] == ["tldr"]
+
+
+def test_skills_used_preserves_order(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    checkin_mod.run_checkin(cwd=project_cwd, mode="explicit", invoking=None, json_out=False, debug=False)
+    checkin_mod.run_checkin(cwd=project_cwd, mode="silent", invoking="tldr", json_out=False, debug=False)
+    checkin_mod.run_checkin(cwd=project_cwd, mode="silent", invoking="relay", json_out=False, debug=False)
+    entry = _load_manifest(sk_root)["sessions"][0]
+    assert entry["skills_used"] == ["checkin", "tldr", "relay"]
+
+
+# --- last_exchange real-user filter ----------------------------------------
+
+
+def test_last_exchange_filters_synthetic_user_records(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    sid, _ = mock_jsonl_session(records=[
+        {"type": "user", "timestamp": "2026-05-17T10:00:00Z",
+         "message": {"content": "real hello"}},
+        {"type": "assistant", "timestamp": "2026-05-17T10:00:05Z",
+         "message": {"content": [{"type": "text", "text": "real reply"}]}},
+        # isMeta — should be ignored (skill-launch injection)
+        {"type": "user", "timestamp": "2026-05-17T10:01:00Z",
+         "isMeta": True,
+         "message": {"content": "<command-name>/foo</command-name>"}},
+        # isSidechain — should be ignored
+        {"type": "user", "timestamp": "2026-05-17T10:02:00Z",
+         "isSidechain": True,
+         "message": {"content": "subagent prompt"}},
+        # tool_result content — should be ignored
+        {"type": "user", "timestamp": "2026-05-17T10:03:00Z",
+         "message": {"content": [{"type": "tool_result", "content": "..."}]}},
+    ])
+    checkin_mod.run_checkin(cwd=project_cwd, mode="silent", invoking=None, json_out=False, debug=False)
+    entry = _load_manifest(sk_root)["sessions"][0]
+    le = entry["last_exchange"]
+    assert le is not None
+    assert le["user"]["text"] == "real hello"
+    assert le["assistant"]["text"] == "real reply"
+
+
+def test_last_exchange_truncates_at_80_chars(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    long_text = "a" * 200
+    mock_jsonl_session(records=[
+        {"type": "user", "timestamp": "2026-05-17T10:00:00Z",
+         "message": {"content": long_text}},
+    ])
+    checkin_mod.run_checkin(cwd=project_cwd, mode="silent", invoking=None, json_out=False, debug=False)
+    entry = _load_manifest(sk_root)["sessions"][0]
+    assert entry["last_exchange"]["user"]["text"] == "a" * 80 + "..."
+
+
+def test_last_exchange_null_when_no_jsonl(sk_root, fake_home, project_cwd):
+    checkin_mod.run_checkin(cwd=project_cwd, mode="silent", invoking=None, json_out=False, debug=False)
+    entry = _load_manifest(sk_root)["sessions"][0]
+    assert entry["last_exchange"] is None
+
+
+# --- Ledger initial content ------------------------------------------------
+
+
+def test_ledger_initial_content(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    sid, _ = mock_jsonl_session(records=[
+        {"type": "user", "timestamp": "2026-05-17T09:00:00Z",
+         "message": {"content": "hi"}},
+    ])
+    r = checkin_mod.run_checkin(cwd=project_cwd, mode="silent", invoking=None, json_out=False, debug=False)
+    led = _load_ledger(Path(r["active_dir"]))
+    assert led["schema_version"] == 1
+    assert led["session_id"] == sid
+    assert led["started_at"] == "2026-05-17T09:00:00Z"
+    assert led["source_dir"] == str(project_cwd)
+    assert led["artifacts"] == []
+
+
+# --- JSON output -----------------------------------------------------------
+
+
+def test_json_output_shape(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    result = runner.invoke(app, ["checkin", "--explicit", "--json"])
+    assert result.exit_code == EXIT_OK, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert set(payload).issuperset({
+        "session_id", "active_dir", "ledger", "manifest", "resolved_via",
+        "is_first", "mode", "appended_skill",
+    })
+    assert payload["mode"] == "explicit"
+    assert payload["appended_skill"] == "checkin"
+
+
+# --- Exit codes ------------------------------------------------------------
+
+
+def test_usage_error_both_modes(sk_root, fake_home, project_cwd):
+    result = runner.invoke(app, ["checkin", "--explicit", "--silent"])
+    assert result.exit_code == EXIT_USAGE
+
+
+def test_durability_failure_on_unwriteable_root(sk_root, fake_home, project_cwd, monkeypatch):
+    # Point SESSION_KIT_ROOT at a path that cannot be created (under /dev/null/...).
+    monkeypatch.setenv("SESSION_KIT_ROOT", "/dev/null/cant-create-this")
+    result = runner.invoke(app, ["checkin", "--explicit"])
+    assert result.exit_code == EXIT_DURABILITY_FAIL

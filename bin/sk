@@ -1,0 +1,27 @@
+#!/usr/bin/env -S uv run --quiet --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "typer>=0.12",
+#     "filelock>=3.13",
+# ]
+# ///
+"""sk — session-kit CLI dispatcher.
+
+Thin entrypoint: resolves the session_kit package from this script's location
+(works whether sk is invoked directly or via a PATH symlink), then hands off to
+the typer app in session_kit/__main__.py.
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+# Resolve symlinks so a `~/.local/bin/sk` symlink still finds the package.
+_PKG_PARENT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_PKG_PARENT))
+
+from session_kit.__main__ import main  # noqa: E402
+
+if __name__ == "__main__":
+    main()

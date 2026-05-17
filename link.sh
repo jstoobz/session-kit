@@ -9,6 +9,7 @@ SKILLS_DIR="${HOME}/.claude/skills"
 mkdir -p "$SKILLS_DIR"
 
 SKILLS=(
+  checkin
   checkpoint
   sweep
   handoff
@@ -57,7 +58,7 @@ for skill in "${SKILLS[@]}"; do
 done
 
 # Link top-level reference docs
-DOCS=(session-kit.md session-checkin.md)
+DOCS=(session-kit.md)
 
 for doc in "${DOCS[@]}"; do
   src="$SCRIPT_DIR/$doc"
@@ -85,6 +86,45 @@ for doc in "${DOCS[@]}"; do
   echo "  link  $doc → $dest"
   linked=$((linked + 1))
 done
+
+# --- Install bin/sk dispatcher into ~/.local/bin/sk ------------------------
+
+LOCAL_BIN="${HOME}/.local/bin"
+SK_SRC="$SCRIPT_DIR/bin/sk"
+SK_DEST="$LOCAL_BIN/sk"
+
+if [ -x "$SK_SRC" ]; then
+  mkdir -p "$LOCAL_BIN"
+  if [ -L "$SK_DEST" ]; then
+    existing="$(readlink "$SK_DEST")"
+    if [ "$existing" = "$SK_SRC" ]; then
+      echo "  ok    sk (already linked)"
+      skipped=$((skipped + 1))
+    else
+      rm "$SK_DEST"
+      ln -s "$SK_SRC" "$SK_DEST"
+      echo "  link  sk → $SK_DEST"
+      linked=$((linked + 1))
+    fi
+  elif [ -e "$SK_DEST" ]; then
+    echo "  WARN  sk — $SK_DEST exists and is not a symlink, skipping"
+    skipped=$((skipped + 1))
+  else
+    ln -s "$SK_SRC" "$SK_DEST"
+    echo "  link  sk → $SK_DEST"
+    linked=$((linked + 1))
+  fi
+
+  case ":$PATH:" in
+    *":$LOCAL_BIN:"*) ;;
+    *)
+      echo ""
+      echo "  NOTE  $LOCAL_BIN is not on your PATH."
+      echo "        Add this to your shell init (e.g. ~/.zshrc):"
+      echo "          export PATH=\"\$HOME/.local/bin:\$PATH\""
+      ;;
+  esac
+fi
 
 echo ""
 echo "Done. Linked $linked item(s), $skipped unchanged."

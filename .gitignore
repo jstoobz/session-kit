@@ -1,0 +1,21 @@
+# --- Python tooling ---
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+.coverage
+*.egg-info/
+
+# --- Operator-private working dirs ---
+.stoobz/
+.claude/
+
+# --- Atomic-write tmp + filelock sidecars ---
+# (Belt-and-suspenders: shouldn't land in tracked dirs, but cheap insurance.)
+*.tmp
+*.lock
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
