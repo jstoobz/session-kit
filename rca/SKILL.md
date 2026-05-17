@@ -5,45 +5,55 @@ description: Generate investigation artifacts for handing off a root cause analy
 
 # RCA — Root Cause Analysis Handoff
 
-Package an investigation into artifacts that let a teammate and their Claude pick up exactly where you left off — with full evidence, reasoning, and unexplored paths.
-
-> **Archive root:** Resolve `$SESSION_KIT_ROOT` (default: `~/.stoobz`). All `~/.stoobz/` paths below use this root.
-
-## Check-In (precondition)
-
-Before the Process section runs, invoke `/checkin` in **silent mode** as a precondition. Export `INVOKING_SKILL=rca` first so `/checkin` records this skill in the session's `skills_used` on its behalf. See [checkin/SKILL.md](../checkin/SKILL.md) for the protocol details (three-tier session-ID resolution, active-dir + ledger creation, scaffolding-idempotent re-entry with liveness refresh).
-
-If `/checkin` aborts (mkdir or ledger creation failure — the only durability conditions that fail loudly), this skill aborts too. Do not proceed to the Process section. Do not write any artifact.
-
-The canonical pattern: inline `/checkin`'s Reference Implementation at the top of this skill's single bash invocation (shell variables — `SESSION_ID`, `ACTIVE_DIR`, `LEDGER`, `NOW` — must stay in scope for any artifact write that follows). All shell work in this skill MUST run in one `Bash` tool invocation; see [checkin/SKILL.md § Execution Discipline](../checkin/SKILL.md#execution-discipline).
+Package an investigation into artifacts a teammate (and their Claude) can pick up cold: a quick-scan summary, a self-contained deep-context doc, and a phase-organized `evidence/` directory with raw queries / logs / measurements. Each artifact is one call to `sk write-artifact` — the binary handles checkin, the durable write, ledger append, and cwd mirror per file. Nested rel-paths like `rca/evidence/01-symptoms/cpu-spike.md` work out of the box.
 
 ## Artifacts Produced
 
-| File                       | Audience                   | Purpose                                                                           |
-| -------------------------- | -------------------------- | --------------------------------------------------------------------------------- |
-| `INVESTIGATION_SUMMARY.md` | Human (quick scan)         | 2-minute overview: what, why, confidence level, recommended action                |
-| `INVESTIGATION_CONTEXT.md` | Human + Claude (deep dive) | Full investigation with preamble — drop the path, Claude walks through it         |
-| `evidence/`                | Claude (raw artifacts)     | Query results, logs, stack traces, screenshots — organized by investigation phase |
+| File                             | Audience                   | Purpose                                                                           |
+| -------------------------------- | -------------------------- | --------------------------------------------------------------------------------- |
+| `INVESTIGATION_SUMMARY.md`       | Human (quick scan)         | 2-minute overview: what, why, confidence, recommended action                      |
+| `INVESTIGATION_CONTEXT.md`       | Human + Claude (deep dive) | Full investigation with preamble — drop the path, Claude walks through it         |
+| `evidence/NN-phase/<file>`       | Claude (raw artifacts)     | Query results, logs, stack traces, screenshots — organized by investigation phase |
+
+All three land under the active archive (`~/.stoobz/sessions/<project>/<sid>-active/`) and the cwd mirror (`./.stoobz/`). The ledger records every file individually with its full rel-path.
 
 ## Process
 
-1. **Create `.stoobz/evidence/` directory** — Persist raw artifacts from the session. Organize logically:
+1. **Compose evidence first.** Walk the investigation chronologically. Each piece of evidence (query result, log excerpt, metric snapshot, stack trace) gets its own file under a numbered phase directory:
 
    ```
-   .stoobz/evidence/
-   ├── 01-initial-symptoms/     # What we observed that triggered the investigation
-   ├── 02-hypothesis-testing/   # Queries, logs, metrics for each hypothesis
-   ├── 03-root-cause/           # The evidence that confirmed/supports the finding
-   └── 04-reproduction/         # Reproduction steps, test results, before/after
+   rca/evidence/01-initial-symptoms/
+   rca/evidence/02-hypothesis-testing/
+   rca/evidence/03-root-cause/
+   rca/evidence/04-reproduction/
    ```
 
-   Name files descriptively: `slow-checkout-query-plan.md`, `cpu-spike-grafana-mar12.png`, `deadlock-thread-dump.txt`. Include timestamps where relevant. Skip numbered directories that have no content — only create directories with actual evidence.
+   Skip phase directories with no content. Name files descriptively (`slow-checkout-query-plan.md`, `cpu-spike-grafana-2026-03-12.png`, `deadlock-thread-dump.txt`); include dates where they matter.
 
-2. **Write `.stoobz/INVESTIGATION_SUMMARY.md`** — Human-first, quick scan format.
+   For each evidence file, one `sk write-artifact` call. Text content: `--content-stdin`. Pre-existing files on disk (e.g., a screenshot the user pasted to `/tmp/spike.png`): `--content-file`.
 
-3. **Write `.stoobz/INVESTIGATION_CONTEXT.md`** — The crown jewel. Self-contained, no skill dependencies. Another engineer drops the path to this file into their Claude and it just works.
+2. **Compose `SUMMARY_BODY`** (human quick scan) in the [INVESTIGATION_SUMMARY.md Format](#investigation_summarymd-format) below.
 
-4. **Confirm outputs and offer adjustments.**
+3. **Compose `CONTEXT_BODY`** (self-contained deep dive) in the [INVESTIGATION_CONTEXT.md Format](#investigation_contextmd-format) below. The preamble is critical — it must work without skills, tools, or prior context. Reference evidence files by their rel-path under `evidence/`.
+
+4. **Write all artifacts.** One bash invocation block; one `sk write-artifact` call per file:
+
+   ```bash
+   sk write-artifact --skill rca --artifact INVESTIGATION_SUMMARY.md --content-stdin <<< "$SUMMARY_BODY"
+   sk write-artifact --skill rca --artifact INVESTIGATION_CONTEXT.md --content-stdin <<< "$CONTEXT_BODY"
+
+   # Per-file evidence — repeat for each. Text content composed by Claude:
+   sk write-artifact --skill rca \
+     --artifact "evidence/01-initial-symptoms/cpu-spike-summary.md" \
+     --content-stdin <<< "$EVIDENCE_BODY_1"
+
+   # Pre-existing file (e.g., a screenshot or log file the user already saved):
+   sk write-artifact --skill rca \
+     --artifact "evidence/02-hypothesis-testing/deadlock-thread-dump.txt" \
+     --content-file /path/to/raw/thread-dump.txt
+   ```
+
+5. **Confirm outputs and offer adjustments.** Print the full archive paths and surface any mirror warnings (`sk write-artifact` exit code `2` on a per-file mirror failure — durable writes are still good).
 
 ## INVESTIGATION_SUMMARY.md Format
 
@@ -91,7 +101,7 @@ _Investigation summary generated {date} — see INVESTIGATION_CONTEXT.md for ful
 
 ## INVESTIGATION_CONTEXT.md Format
 
-The preamble is critical — it makes this file work without any skill setup.
+The preamble makes this file work without any skill setup.
 
 ```markdown
 # Investigation Context: {Descriptive title}
@@ -122,14 +132,13 @@ The preamble is critical — it makes this file work without any skill setup.
 
 ## Problem Statement
 
-{What went wrong, when it started, what the observable symptoms are. Include metrics,
-error messages, user reports — whatever triggered the investigation. Be specific enough
-that someone unfamiliar can understand the severity.}
+{What went wrong, when it started, observable symptoms. Include metrics, error messages,
+user reports. Be specific enough that someone unfamiliar can understand the severity.}
 
 ## Investigation Approach
 
-{How this was investigated. What tools, queries, environments were used. This gives the
-reader confidence in the methodology and helps them understand what data is available.}
+{How this was investigated. Tools, queries, environments. Gives the reader confidence in
+the methodology and a map of what data is available.}
 
 ### Tools & Access Used
 
@@ -141,24 +150,16 @@ reader confidence in the methodology and helps them understand what data is avai
 
 ### Root Cause Analysis
 
-{Detailed explanation of what we believe is happening and why. Walk through the causal
-chain from trigger to symptom. Include code paths, module names, and line references
-where applicable.}
+{Detailed explanation of what's happening and why. Walk the causal chain from trigger to
+symptom. Include code paths, module names, line references where applicable.}
 
 **Confidence:** {low | medium | high} — {why this confidence level}
 
 ### Supporting Evidence
 
-{For each piece of evidence, describe what it shows and why it matters. Reference files
-in evidence/ for the raw data.}
-
 1. **{Evidence title}** — {what it shows}
    - Source: `evidence/{path}`
    - Significance: {why this matters to the conclusion}
-
-2. **{Evidence title}** — {what it shows}
-   - Source: `evidence/{path}`
-   - Significance: {why this matters}
 
 ### Reproduction
 
@@ -169,28 +170,19 @@ If reproduction wasn't possible, explain why and what was done instead.}
 
 ### Explored and Ruled Out
 
-{Hypotheses that were investigated and dismissed, with evidence for why.}
-
 | Hypothesis                    | Evidence Against      | Effort                    |
 | ----------------------------- | --------------------- | ------------------------- |
 | {What we thought it might be} | {Why we ruled it out} | {Brief — what we checked} |
 
 ### Considered but Not Explored
 
-{Hypotheses worth investigating but not pursued in this session. Include reasoning for
-why they were deprioritized and what investigating them would look like.}
-
 - **{Hypothesis}** — {Why it's plausible, why we didn't pursue, what exploring it requires}
 
 ### Currently Still Investigating
 
-{Active threads that don't have conclusions yet. Include current status and next step.}
-
 - **{Thread}** — {Current status, what the next step is}
 
 ## Affected Components
-
-{Key files, modules, services, databases involved. Specific enough for someone to navigate the codebase.}
 
 | Component               | Role in Issue              | File/Module                               |
 | ----------------------- | -------------------------- | ----------------------------------------- |
@@ -198,12 +190,12 @@ why they were deprioritized and what investigating them would look like.}
 
 ## Environment Details
 
-{Relevant environment state: versions, config, feature flags, recent deploys — anything that could affect reproduction or fix verification.}
+{Versions, config, feature flags, recent deploys — anything that could affect reproduction
+or fix verification.}
 
 ## Recommended Next Steps
 
 1. {Actionable step with enough context to execute}
-2. {Actionable step}
 
 ---
 
@@ -211,14 +203,32 @@ _Investigation context generated {date}. Evidence artifacts in `./.stoobz/eviden
 _Original investigation conducted by {user} in a Claude Code session._
 ```
 
+## Exit Codes
+
+`sk write-artifact` returns per-call:
+
+| Code | Meaning | Caller behavior |
+|------|---------|-----------------|
+| `0` | Durable write + mirror both succeeded | Continue to next file |
+| `1` | Durability failure on this file | Surface error; do not claim success for any later files in the same RCA batch unless you can recover |
+| `2` | Durable write succeeded; cwd mirror failed | Mention the warning; archive is authoritative; continue |
+| `3` | Usage error (bad rel-path, missing content source) | Fix and retry the offending call |
+
 ## Rules
 
-- **Evidence is non-negotiable** — If there are no raw artifacts, prompt the user: "What evidence should we persist? Paste query results, logs, screenshots, or tell me what to capture."
-- **Self-contained** — The context file must work without any skills, tools, or prior context. Another engineer + a fresh Claude session is the target.
-- **Confidence calibration** — Be honest about confidence levels. "Suspected" with medium confidence is more useful than a false "confirmed."
-- **No Claude session artifacts** — Strip references to skills, prompts, session mechanics. The recipient doesn't need to know how we work.
-- **Preserve raw evidence** — Summaries in the markdown, raw data in evidence/. Never throw away the originals.
-- **Descriptive file names** — `evidence/oban-job-queue-depth-feb6.md` not `evidence/data1.txt`
-- **Skip empty sections** — If nothing was ruled out, omit "Explored and Ruled Out." If nothing is still being investigated, omit that section.
-- **Tell the recipient about their own persistence** — The preamble should note that their Claude session can create `INVESTIGATION_REVIEW/` alongside evidence/ to persist their own analysis. This is mentioned in the preamble's Claude instructions.
-- Write to `./.stoobz/` in the current working directory unless the user specifies a different path
+- **Evidence is non-negotiable** — if there are no raw artifacts to capture, prompt the user: "What evidence should we persist? Paste query results, logs, screenshots, or tell me what to capture."
+- **Self-contained** — the context file must work without any skills, tools, or prior context. Another engineer + a fresh Claude session is the target.
+- **Confidence calibration** — be honest about confidence levels. "Suspected" with medium confidence beats a false "confirmed."
+- **No Claude session artifacts** — strip references to skills, prompts, session mechanics.
+- **Preserve raw evidence** — summaries in the markdown, raw data in evidence/. Never throw away originals.
+- **Descriptive file names** — `evidence/oban-job-queue-depth-2026-02-06.md` not `evidence/data1.txt`.
+- **Skip empty sections** — no "Explored and Ruled Out" if nothing was ruled out.
+- **Tell the recipient about their own persistence** — the preamble notes that the receiving Claude can create `INVESTIGATION_REVIEW/` alongside `evidence/` to persist its own analysis.
+- The canonical write location is `<active-archive>/...`; `cwd/.stoobz/...` is the best-effort mirror.
+- Ledger entries carry the full rel-path (`evidence/01-symptoms/foo.md`), not the leaf name.
+
+## See also
+
+- [checkin/SKILL.md](../checkin/SKILL.md), [write-artifact-protocol.md](../write-artifact-protocol.md)
+- `sk write-artifact --help`
+- [ADR-0005](~/.stoobz/kb/adr/0005-skills-as-thin-orchestrators-of-versioned-scripts.md)
