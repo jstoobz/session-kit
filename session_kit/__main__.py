@@ -10,6 +10,7 @@ from __future__ import annotations
 import typer
 
 from . import checkin as checkin_cmd
+from . import index as index_cmd
 from . import park_finalize as park_finalize_cmd
 from . import write_artifact as write_artifact_cmd
 
@@ -26,6 +27,7 @@ app.command(name="write-artifact", help=write_artifact_cmd.command.__doc__)(
 app.command(name="park-finalize", help=park_finalize_cmd.command.__doc__)(
     park_finalize_cmd.command
 )
+app.command(name="index", help=index_cmd.command.__doc__)(index_cmd.command)
 
 
 def main() -> None:

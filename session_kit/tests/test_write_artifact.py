@@ -219,3 +219,144 @@ def test_cli_mirror_failure_exits_warn(sk_root, fake_home, project_cwd, mock_jso
         input="body\n",
     )
     assert result.exit_code == EXIT_WARN
+
+
+# --- Tags propagation -----------------------------------------------------
+
+
+def _manifest_entry(sk_root: Path) -> dict:
+    m = json.loads((sk_root / "manifest.json").read_text())
+    assert m["sessions"], "expected at least one manifest entry"
+    return m["sessions"][0]
+
+
+def test_tags_appends_to_empty_tags_array(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    wa_mod.run_write_artifact(
+        cwd=project_cwd,
+        skill="persist",
+        rel_path="runbook.md",
+        content="body\n",
+        mirror=False,
+        json_out=False,
+        tags=["deployment", "infrastructure"],
+    )
+    assert _manifest_entry(sk_root)["tags"] == ["deployment", "infrastructure"]
+
+
+def test_tags_merges_and_dedupes_with_existing(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    wa_mod.run_write_artifact(
+        cwd=project_cwd,
+        skill="persist",
+        rel_path="a.md",
+        content="x\n",
+        mirror=False,
+        json_out=False,
+        tags=["alpha", "beta"],
+    )
+    wa_mod.run_write_artifact(
+        cwd=project_cwd,
+        skill="persist",
+        rel_path="b.md",
+        content="x\n",
+        mirror=False,
+        json_out=False,
+        tags=["beta", "gamma"],
+    )
+    assert _manifest_entry(sk_root)["tags"] == ["alpha", "beta", "gamma"]
+
+
+def test_tags_omitted_leaves_existing_untouched(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    wa_mod.run_write_artifact(
+        cwd=project_cwd,
+        skill="persist",
+        rel_path="a.md",
+        content="x\n",
+        mirror=False,
+        json_out=False,
+        tags=["alpha"],
+    )
+    wa_mod.run_write_artifact(
+        cwd=project_cwd,
+        skill="persist",
+        rel_path="b.md",
+        content="x\n",
+        mirror=False,
+        json_out=False,
+        # no tags argument
+    )
+    assert _manifest_entry(sk_root)["tags"] == ["alpha"]
+
+
+def test_tags_empty_csv_treated_as_no_tags(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    wa_mod.run_write_artifact(
+        cwd=project_cwd,
+        skill="persist",
+        rel_path="a.md",
+        content="x\n",
+        mirror=False,
+        json_out=False,
+        tags=["alpha"],
+    )
+    # Empty list mimics what _parse_tags_csv("") returns.
+    wa_mod.run_write_artifact(
+        cwd=project_cwd,
+        skill="persist",
+        rel_path="b.md",
+        content="x\n",
+        mirror=False,
+        json_out=False,
+        tags=[],
+    )
+    assert _manifest_entry(sk_root)["tags"] == ["alpha"]
+
+
+def test_tags_sequential_calls_union_is_deduped(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    for batch in (["a", "b"], ["b", "c"], ["c", "d"], ["a"]):
+        wa_mod.run_write_artifact(
+            cwd=project_cwd,
+            skill="persist",
+            rel_path=f"art-{'-'.join(batch)}.md",
+            content="x\n",
+            mirror=False,
+            json_out=False,
+            tags=batch,
+        )
+    assert _manifest_entry(sk_root)["tags"] == ["a", "b", "c", "d"]
+
+
+def test_parse_tags_csv_dedupes_and_strips():
+    assert wa_mod._parse_tags_csv("a, b,a , c") == ["a", "b", "c"]
+    assert wa_mod._parse_tags_csv("") == []
+    assert wa_mod._parse_tags_csv(None) == []
+    assert wa_mod._parse_tags_csv("   ,  ") == []
+
+
+def test_cli_tags_flag_appends_to_manifest(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    result = runner.invoke(
+        app,
+        ["write-artifact", "--skill", "persist", "--artifact", "x.md",
+         "--content-stdin", "--no-mirror", "--tags", "alpha,beta", "--json"],
+        input="body\n",
+    )
+    assert result.exit_code == EXIT_OK, result.stdout + result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["tags_added"] == ["alpha", "beta"]
+    assert _manifest_entry(sk_root)["tags"] == ["alpha", "beta"]
+
+
+def test_cli_tags_flag_omitted_no_tags_on_manifest(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    result = runner.invoke(
+        app,
+        ["write-artifact", "--skill", "persist", "--artifact", "x.md",
+         "--content-stdin", "--no-mirror"],
+        input="body\n",
+    )
+    assert result.exit_code == EXIT_OK, result.stdout + result.stderr
+    assert _manifest_entry(sk_root)["tags"] == []

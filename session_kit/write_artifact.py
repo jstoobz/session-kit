@@ -30,6 +30,7 @@ from .common import (
     atomic_update_json,
     atomic_write_text,
     now_iso,
+    session_kit_root,
 )
 
 
@@ -66,6 +67,50 @@ def _validate_rel_path(rel_path: str) -> Path:
     return p
 
 
+def _parse_tags_csv(value: str | None) -> list[str]:
+    """Split a CSV string into a deduped list of non-empty tag tokens, order preserved."""
+    if not value:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in value.split(","):
+        tag = raw.strip()
+        if not tag or tag in seen:
+            continue
+        seen.add(tag)
+        out.append(tag)
+    return out
+
+
+def _append_tags_to_manifest(manifest_path: Path, session_id: str, tags: list[str]) -> None:
+    """Merge-dedupe `tags` into the manifest entry's tags[] array. No-op on empty list."""
+    if not tags:
+        return
+
+    def mutate(data: Any) -> Any:
+        data = data or {"sessions": []}
+        sessions = data.get("sessions") or []
+        idx = next(
+            (i for i, s in enumerate(sessions) if s.get("session_id") == session_id),
+            None,
+        )
+        if idx is None:
+            return data
+        entry = sessions[idx]
+        existing = list(entry.get("tags") or [])
+        seen = set(existing)
+        for t in tags:
+            if t not in seen:
+                seen.add(t)
+                existing.append(t)
+        entry["tags"] = existing
+        sessions[idx] = entry
+        data["sessions"] = sessions
+        return data
+
+    atomic_update_json(manifest_path, mutate, default={"sessions": []})
+
+
 def run_write_artifact(
     *,
     cwd: Path,
@@ -74,6 +119,7 @@ def run_write_artifact(
     content: str,
     mirror: bool,
     json_out: bool,
+    tags: list[str] | None = None,
 ) -> dict:
     rel = _validate_rel_path(rel_path)
 
@@ -141,6 +187,17 @@ def run_write_artifact(
         )
         raise typer.Exit(code=EXIT_DURABILITY_FAIL)
 
+    # --- Step 3.5: tag propagation (additive merge into manifest entry) ---
+    if tags:
+        manifest_path = session_kit_root() / "manifest.json"
+        try:
+            _append_tags_to_manifest(manifest_path, checkin_result["session_id"], tags)
+        except OSError as exc:
+            print(
+                f"warn: tag append to manifest failed at {manifest_path}: {exc}",
+                file=sys.stderr,
+            )
+
     # --- Step 4: cwd mirror (best-effort) ---
     mirror_status = "skipped"
     mirror_path = cwd / ".stoobz" / rel
@@ -171,6 +228,7 @@ def run_write_artifact(
         "size_bytes": size,
         "written_at": now,
         "ledger": str(ledger_path),
+        "tags_added": list(tags or []),
     }
 
     if json_out:
@@ -215,6 +273,12 @@ def command(
     no_mirror: bool = typer.Option(
         False, "--no-mirror", help="Skip the cwd best-effort mirror step."
     ),
+    tags: str = typer.Option(
+        None,
+        "--tags",
+        metavar="CSV",
+        help="Comma-separated tags to merge-dedupe into the manifest entry's tags[]. Additive; empty value or omitted flag leaves existing tags untouched.",
+    ),
     json_out: bool = typer.Option(
         False, "--json", help="Emit a machine-readable JSON result on stdout."
     ),
@@ -246,6 +310,7 @@ def command(
         content=content,
         mirror=not no_mirror,
         json_out=json_out,
+        tags=_parse_tags_csv(tags),
     )
 
     # Mirror failures are warnings, not durability failures.
