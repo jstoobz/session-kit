@@ -2,6 +2,8 @@
 
 Workflows and composability patterns for getting the most out of Session Kit.
 
+> **How skills work.** Every session-kit skill is a thin orchestrator: SKILL.md owns the contract and any Claude-judgment composition (drafting a TLDR body, inferring a label); the `sk` Python CLI handles all deterministic plumbing (session-id resolution, manifest updates, ledger writes, archive renames, queries). The user-facing surface (`/park`, `/tldr`, `/index`, etc.) is unchanged; implementation lives in `session_kit/*.py` under the kit root. Run `sk --help` for the subcommand reference.
+
 ## New Repo Onboarding
 
 Before your first real work session in a new repo, prime it:
@@ -34,7 +36,7 @@ Session 2:  /pickup → [continue] → /park
 Session 3:  /pickup → [wrap up] → /park + /retro
 ```
 
-`/park` generates three artifacts (TLDR, relay context, prompt analysis) in `./.stoobz/`, archives them to `~/.stoobz/sessions/`, and leaves `.stoobz/CONTEXT_FOR_NEXT_SESSION.md` as the relay baton. `/pickup` reads that file and presents a briefing so you can jump right back in.
+`/park` composes three artifacts (TLDR, relay context, prompt analysis) and writes each through `sk write-artifact` — durable archive first, then `./.stoobz/` mirror. `sk park-finalize` then renames the active dir to its final `<date>-<label>/` form and flips the manifest entry to `archived`. `.stoobz/CONTEXT_FOR_NEXT_SESSION.md` stays as the relay baton. `/pickup` reads it and runs `sk checkin --inherit-chain-from` so the new session picks up the chain identity automatically.
 
 ## Ticket Work
 
@@ -69,17 +71,22 @@ Use `/persist` to save reference artifacts without ending your session:
 [continue working]           → /persist api-runbook playbook deployment
 ```
 
-Persisted artifacts land in `./.stoobz/` during the session and are archived to `~/.stoobz/sessions/<project>/` when you `/park`.
+Persisted artifacts land in the durable `<sid>-active/` archive (and are mirrored to `./.stoobz/`) the moment you run `/persist`. They're already safe before `/park`. The tags you provide are merge-deduped into the manifest entry's `tags[]` array, so `/index <tag>` finds them — even mid-session, before any park ceremony.
 
 ## Finding Past Work
 
 ```
-/index                     → see all sessions
-/index auth                → filter by tag, summary, label, or project
-/index --deep "rate limit" → grep inside archived artifact content
+/index                       → see all sessions
+/index auth                  → filter by tag, summary, label, project, branch, last_exchange
+/index --active              → in-flight sessions, with copy-pasteable resume commands
+/index --orphans             → filesystem dirs that never registered (recover legacy work)
+/index --since week          → only the last 7 days (today / week / month / YYYY-MM-DD)
+/index --chain               → group by chain_id, with fork annotations
+/index --deep "rate limit"   → grep inside archived artifact bodies
+/index --json                → structured payload for scripting
 ```
 
-The manifest powers fast lookups. `--deep` searches actual file content when metadata isn't enough.
+The manifest powers fast lookups via `sk index`. `--orphans` is the WAL-pattern recovery surface: it walks the filesystem for `<sid>-active/` dirs and surfaces any that aren't in the manifest (so a session that crashed before its first skill ran, or a hand-built fixture, is still discoverable).
 
 ## Production Investigation Flow
 
@@ -125,7 +132,7 @@ If you have scattered `.stoobz/` directories from before you started using `/par
 
 ## Crash Recovery
 
-If a terminal crashes before `/park`, active sessions are still findable as long as any session-kit skill ran during the session (which triggers check-in):
+If a terminal crashes before `/park`, active sessions are still findable as long as any session-kit skill ran during the session (which triggers `sk checkin`):
 
 ```
 /index --active    → all live sessions with resume commands
@@ -137,7 +144,9 @@ Copy the `return_to` command to drop back in:
 cd ~/repos/brrp && claude --resume a1b2c3d4-...
 ```
 
-If no session-kit skill ran during the session (no check-in), fall back to manual forensics:
+If a session crashed before any check-in but a stray `<sid>-active/` exists on disk (e.g., from a legacy fixture or a half-built session), use `/index --orphans` — the binary scans the filesystem for active dirs that have no manifest entry and surfaces them with last-mtime and ledger artifact count.
+
+If neither path finds the session, fall back to manual forensics:
 
 ```bash
 find ~/.claude/projects/ -maxdepth 2 -name "*.jsonl" -mtime -1 | sort -t/ -k6 | tail -5
@@ -236,6 +245,7 @@ Skills are independent — use any combination. Some natural pairings:
 
 - **`/park` is the default exit** — It handles everything. Use individual skills only when you need a specific artifact without the full ceremony.
 - **Labels help** — `/park fix-auth-bug` is easier to find than auto-generated labels.
-- **Tags are automatic** — `/park` and `/persist` auto-detect tags from content. Override with explicit tags on `/persist` when the auto-detection misses.
-- **Restart after skill edits** — Skill content is cached when Claude Code starts. Edit a SKILL.md → restart to pick it up.
+- **Tags accumulate** — `/park` (auto-detected from TLDR) and `/persist` (explicit positional args) both merge into the manifest entry's `tags[]` array via `sk write-artifact --tags`. The accumulated set is what `/index <tag>` searches.
+- **Restart after SKILL.md edits** — Skill content is cached when Claude Code starts.
+- **No restart after `session_kit/*.py` edits** — `bin/sk` reads fresh each invocation, so binary changes take effect immediately.
 - **`.stoobz/CONTEXT_FOR_NEXT_SESSION.md` stays in `.stoobz/`** — This is intentional. It's the relay baton. Don't move it.

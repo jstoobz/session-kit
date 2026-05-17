@@ -22,7 +22,7 @@ cd session-kit
 
 This symlinks each skill into `~/.claude/skills/` and the `sk` dispatcher binary into `~/.local/bin/sk`. Restart Claude Code to pick up the new skills.
 
-The `sk` binary is the backing implementation for the migrated skills (`/checkin`, `/park`, `/tldr`, `/relay`, `/hone`, `/retro`, `/handoff`, `/rca`, `/persist`) — each SKILL.md is a thin orchestrator that invokes a `sk <subcommand>`. Run `sk --help` for the full subcommand reference. `~/.local/bin` must be on your `PATH`.
+The `sk` binary is the backing implementation for every migrated skill (`/checkin`, `/index`, `/park`, `/tldr`, `/relay`, `/hone`, `/retro`, `/handoff`, `/rca`, `/persist`). Each SKILL.md is a thin orchestrator that invokes a `sk <subcommand>`. Run `sk --help` for the full subcommand reference. `~/.local/bin` must be on your `PATH`.
 
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/). The `bin/sk` shebang invokes `uv run` to manage its own dependencies (typer, filelock) — no system-wide install needed.
 
@@ -52,9 +52,11 @@ Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/). The `bin/sk` shebang
 | `/park` | End session — generate artifacts, archive, update manifest |
 | `/park <label>` | Park with explicit archive label (e.g., `/park PROJ-1234`) |
 | `/pickup` | Start session — load prior context, present briefing, inherit chain metadata from the relay baton |
-| `/persist <name> <tags>` | Save a reference artifact mid-session to `.stoobz/` |
+| `/persist <name> <tags>` | Save a reference artifact mid-session to `.stoobz/`. Tags merge-dedupe into the manifest entry, surfaced by `/index <tag>` |
 | `/checkpoint` | Synthesize selected chain nodes into a new starting point (branch chain) |
 | `/index` | Find past sessions from manifest |
+| `/index --active` | Only in-flight (unparked) sessions, with resume commands |
+| `/index --orphans` | Filesystem active dirs that never registered (legacy recovery) |
 | `/index --deep <term>` | Search inside archived artifact content |
 
 ### Project Setup — create permanent expert knowledge
@@ -95,7 +97,7 @@ Session Kit archives to a central location (default `~/.stoobz/`):
             └── INVESTIGATION_SUMMARY.md
 ```
 
-During a session, every artifact is written **directly** to the durable `<session-id>-active/` directory (via `sk write-artifact`) and **copied** to `./.stoobz/` for in-session discovery. `/park` renames the active directory to its final `<date>-<label>/` form, flips the manifest entry from `active` to `archived`, and leaves `.stoobz/CONTEXT_FOR_NEXT_SESSION.md` as the relay baton for `/pickup`.
+During a session, every artifact is written **directly** to the durable `<session-id>-active/` directory (via `sk write-artifact`) and **copied** to `./.stoobz/` for in-session discovery. `/park` runs `sk park-finalize`, which renames the active directory to its final `<date>-<label>/` form, flips the manifest entry from `active` to `archived`, and leaves `.stoobz/CONTEXT_FOR_NEXT_SESSION.md` as the relay baton for `/pickup`.
 
 This is the **durable-first** protocol — if the session terminates abnormally, the artifacts are already in the central archive. See [`write-artifact-protocol.md`](write-artifact-protocol.md) for the contract artifact-emitting skills follow.
 
@@ -129,6 +131,9 @@ export SESSION_KIT_ROOT="$HOME/.sessions"
 | Package an investigation | `/rca` |
 | Find a past session | `/index` |
 | Save a reference mid-session | `/persist` |
+| Find a session by tag | `/index <tag>` |
+| List in-flight sessions | `/index --active` |
+| Surface unregistered active dirs | `/index --orphans` |
 | Search inside archived content | `/index --deep <term>` |
 | Clean up old sessions | `/sweep` |
 
