@@ -297,35 +297,56 @@ def test_chain_block_idempotent_on_existing_block(
 # --- Tag handling ---------------------------------------------------------
 
 
-def test_tags_provided_replaces(
-    sk_root, fake_home, project_cwd, mock_jsonl_session
-):
-    sid, _ = mock_jsonl_session()
-    _write_tldr_relay_hone(project_cwd)
-    # Pre-seed existing tags
+def _set_existing_tags(sk_root: Path, sid: str, tags: list[str]) -> None:
     manifest_path = sk_root / "manifest.json"
     m = json.loads(manifest_path.read_text())
-    m["sessions"][0]["tags"] = ["old1", "old2"]
+    for s in m["sessions"]:
+        if s.get("session_id") == sid:
+            s["tags"] = list(tags)
     manifest_path.write_text(json.dumps(m, indent=2, sort_keys=True))
+
+
+def test_park_finalize_merges_tags(
+    sk_root, fake_home, project_cwd, mock_jsonl_session
+):
+    """Pre-existing ["foo","bar"] + --tags "bar,baz" → ["foo","bar","baz"] (deduped, order preserved)."""
+    sid, _ = mock_jsonl_session()
+    _write_tldr_relay_hone(project_cwd)
+    _set_existing_tags(sk_root, sid, ["foo", "bar"])
 
     pf_mod.run_park_finalize(
         cwd=project_cwd, label="x", summary="x",
-        tags=["new1", "new2", "new3"], chain_id_override=None,
+        tags=["bar", "baz"], chain_id_override=None,
         no_chain_block=True, json_out=False, debug=False,
     )
     entry = _entry_for(sk_root, sid)
-    assert entry["tags"] == ["new1", "new2", "new3"]
+    assert entry["tags"] == ["foo", "bar", "baz"]
 
 
-def test_tags_absent_preserves_existing(
+def test_park_finalize_empty_existing_tags(
     sk_root, fake_home, project_cwd, mock_jsonl_session
 ):
+    """Pre-existing [] + --tags "a,b,c" → ["a","b","c"]."""
     sid, _ = mock_jsonl_session()
     _write_tldr_relay_hone(project_cwd)
-    manifest_path = sk_root / "manifest.json"
-    m = json.loads(manifest_path.read_text())
-    m["sessions"][0]["tags"] = ["kept1", "kept2"]
-    manifest_path.write_text(json.dumps(m, indent=2, sort_keys=True))
+    _set_existing_tags(sk_root, sid, [])
+
+    pf_mod.run_park_finalize(
+        cwd=project_cwd, label="x", summary="x",
+        tags=["a", "b", "c"], chain_id_override=None,
+        no_chain_block=True, json_out=False, debug=False,
+    )
+    entry = _entry_for(sk_root, sid)
+    assert entry["tags"] == ["a", "b", "c"]
+
+
+def test_park_finalize_no_tags_arg_preserves_existing(
+    sk_root, fake_home, project_cwd, mock_jsonl_session
+):
+    """Pre-existing ["x","y"] + --tags omitted (None) → ["x","y"] (no change)."""
+    sid, _ = mock_jsonl_session()
+    _write_tldr_relay_hone(project_cwd)
+    _set_existing_tags(sk_root, sid, ["x", "y"])
 
     pf_mod.run_park_finalize(
         cwd=project_cwd, label="x", summary="x",
@@ -333,7 +354,25 @@ def test_tags_absent_preserves_existing(
         json_out=False, debug=False,
     )
     entry = _entry_for(sk_root, sid)
-    assert entry["tags"] == ["kept1", "kept2"]
+    assert entry["tags"] == ["x", "y"]
+
+
+def test_park_finalize_empty_tags_arg_preserves_existing(
+    sk_root, fake_home, project_cwd, mock_jsonl_session
+):
+    """Pre-existing ["x"] + --tags "" (parsed to []) → ["x"]. Empty CSV is a no-op,
+    matching sk write-artifact --tags semantics."""
+    sid, _ = mock_jsonl_session()
+    _write_tldr_relay_hone(project_cwd)
+    _set_existing_tags(sk_root, sid, ["x"])
+
+    pf_mod.run_park_finalize(
+        cwd=project_cwd, label="x", summary="x",
+        tags=[], chain_id_override=None, no_chain_block=True,
+        json_out=False, debug=False,
+    )
+    entry = _entry_for(sk_root, sid)
+    assert entry["tags"] == ["x"]
 
 
 # --- --json output shape --------------------------------------------------

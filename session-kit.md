@@ -239,6 +239,7 @@ See [write-artifact-protocol.md](write-artifact-protocol.md) and [ADR-0004](http
 - `manifest.json` is the single source of truth for `/index`. Active entries are visible while in-flight thanks to `sk checkin`.
 - Sessions with `chain_id` form chains visible via `/index --chain`.
 - `<sid>-active/` dirs without a matching manifest entry are surfaced by `/index --orphans`.
+- **Archive dates are UTC**, not local time. A `/park` near midnight in a non-UTC timezone may produce a next-day-dated archive directory; grepping archives by date should account for the UTC boundary.
 
 ## Quick Reference
 

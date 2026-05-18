@@ -62,7 +62,7 @@ Scan `$TLDR_BODY` (case-insensitive) for matches in:
 - **Frameworks:** phoenix, ecto, oban, react, next, absinthe, liveview
 - **Topics:** debugging, performance, migration, refactor, investigation, auth, deployment, testing, infrastructure
 
-Pick 2–5 most-mentioned terms. Tags are comma-separated in the next step.
+Pick 2–5 most-mentioned terms. Tags are comma-separated in the next step. `sk park-finalize` merge-deduplicates these into the manifest entry's existing `tags[]` array, so any tags accumulated mid-session via `/persist` survive automatically — the orchestrator does not need to read the manifest or compute the union itself.
 
 ### 7. Finalize via the substrate
 
@@ -75,7 +75,7 @@ sk park-finalize --label "$LABEL" --summary "$SUMMARY" --tags "$TAGS"
 1. Reads the ledger (`<active-dir>/.session-artifacts.json`) as the authoritative artifact list, dedupe-by-name last-write-wins.
 2. Verifies each ledger entry exists at `<active-dir>/<name>` — surfaces missing files as a warning, continues.
 3. Renames `<sid>-active/` → `<YYYY-MM-DD>-<label>/` (with `-2`, `-3`, ... collision suffix).
-4. Atomic manifest RMW: flips `status` to `archived`; populates `id`, `label`, `summary`, `date`, `archive_path`, `artifacts`, `tags`. Respects inherited `chain_id`, `chain_position`, `previous_session_id`, `parent_chain_id`, `checkpoint_nodes`. If first-node (chain_position null or 1, chain_id null or == session_id), sets `chain_id` = `<label>`.
+4. Atomic manifest RMW: flips `status` to `archived`; populates `id`, `label`, `summary`, `date`, `archive_path`, `artifacts`; merge-dedupes the supplied `--tags` into the existing `tags[]` (insertion-order preserved). Respects inherited `chain_id`, `chain_position`, `previous_session_id`, `parent_chain_id`, `checkpoint_nodes`. If first-node (chain_position null or 1, chain_id null or == session_id), sets `chain_id` = `<label>`.
 5. Appends `<!-- session-kit-chain ... -->` block to `./.stoobz/CONTEXT_FOR_NEXT_SESSION.md` (the relay baton stays in cwd for `/pickup`).
 6. Prints summary (Archive path, Artifacts, Relay, Tags, Session UUID prefix, Chain).
 

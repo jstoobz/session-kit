@@ -276,8 +276,17 @@ def run_park_finalize(
             entry["archive_path"] = relative_archive
             entry["artifacts"] = list(artifact_names)
             entry["last_activity"] = now
-            if tags is not None:
-                entry["tags"] = list(tags)
+            if tags:
+                # Merge-dedupe new tags into the existing tags[], preserving
+                # insertion order. Symmetric with sk write-artifact --tags so
+                # /persist's mid-session tag accumulation survives /park.
+                existing = list(entry.get("tags") or [])
+                seen = set(existing)
+                for t in tags:
+                    if t not in seen:
+                        seen.add(t)
+                        existing.append(t)
+                entry["tags"] = existing
 
             current_chain_position = entry.get("chain_position")
             current_chain_id = entry.get("chain_id")
