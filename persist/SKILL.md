@@ -112,4 +112,4 @@ User: /persist deploy-runbook playbook deployment
 
 - [checkin/SKILL.md](../checkin/SKILL.md), [write-artifact-protocol.md](../write-artifact-protocol.md)
 - `sk write-artifact --help`
-- [ADR-0005](~/.stoobz/kb/adr/0005-skills-as-thin-orchestrators-of-versioned-scripts.md)
+- ADR-0005 (Skills as thin orchestrators of versioned scripts)

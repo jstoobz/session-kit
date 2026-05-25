@@ -2,7 +2,7 @@
 
 The canonical contract every artifact-writing session-kit skill follows. Read this once; individual SKILL.md files reference it instead of restating it.
 
-> **Why this exists.** See [ADR-0004](~/.stoobz/kb/adr/0004-session-kit-artifact-durability.md) — durable-first write-through with ledger replaces lazy-archive copy-at-`/park`.
+> **Why this exists.** See ADR-0004 (Session Kit artifact durability) — durable-first write-through with ledger replaces lazy-archive copy-at-`/park`.
 
 ---
 
@@ -157,6 +157,6 @@ If a ledger entry's file is missing or size doesn't match, `/park` surfaces the 
 
 ## References
 
-- [ADR-0004](~/.stoobz/kb/adr/0004-session-kit-artifact-durability.md) — the *why*
+- ADR-0004 (Session Kit artifact durability) — the *why*
 - [checkin/SKILL.md](checkin/SKILL.md) — active dir pre-allocation, session ID detection
 - [session-kit.md](session-kit.md) — overall kit architecture

@@ -117,4 +117,4 @@ _Paste this document at the start of your next Claude Code session in this direc
 - [checkin/SKILL.md](../checkin/SKILL.md) — the precondition `sk write-artifact` invokes silently
 - [write-artifact-protocol.md](../write-artifact-protocol.md) — the durable-first contract
 - `sk write-artifact --help` — full arg + exit-code + JSON-schema reference
-- [ADR-0005](~/.stoobz/kb/adr/0005-skills-as-thin-orchestrators-of-versioned-scripts.md) — why this skill is a thin wrapper
+- ADR-0005 (Skills as thin orchestrators of versioned scripts) — why this skill is a thin wrapper

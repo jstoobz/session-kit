@@ -89,4 +89,4 @@ Active sessions render with `Since` / `Last Active` / `Branch` / `Last Exchange`
 
 - [checkin/SKILL.md](../checkin/SKILL.md) — the registration side of the WAL pattern
 - `sk index --help` — authoritative arg reference
-- [ADR-0004](~/.stoobz/kb/adr/0004-session-kit-artifact-durability.md), [ADR-0005](~/.stoobz/kb/adr/0005-skills-as-thin-orchestrators-of-versioned-scripts.md)
+- ADR-0004 (Session Kit artifact durability), ADR-0005 (Skills as thin orchestrators of versioned scripts)

@@ -129,5 +129,5 @@ The supported flags (`--select` default, `--all`, `--dry-run`, `--clean`) and th
 - [checkin/SKILL.md](../checkin/SKILL.md) — precondition each `sk write-artifact` triggers internally
 - [write-artifact-protocol.md](../write-artifact-protocol.md) — the durable-first contract
 - `sk park-finalize --help`, `sk write-artifact --help` — full arg / exit-code / JSON reference
-- [ADR-0004](~/.stoobz/kb/adr/0004-session-kit-artifact-durability.md) — why /park is finalization, not copy
-- [ADR-0005](~/.stoobz/kb/adr/0005-skills-as-thin-orchestrators-of-versioned-scripts.md) — why this skill is a thin wrapper
+- ADR-0004 (Session Kit artifact durability) — why /park is finalization, not copy
+- ADR-0005 (Skills as thin orchestrators of versioned scripts) — why this skill is a thin wrapper

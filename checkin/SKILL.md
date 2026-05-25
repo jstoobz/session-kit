@@ -7,7 +7,7 @@ description: Register the current Claude Code session under Session Kit and pre-
 
 Register the current Claude Code session in `$SESSION_KIT_ROOT/manifest.json`, pre-allocate `<archive>/<session-id>-active/`, and initialize `.session-artifacts.json`. Idempotent on re-entry — scaffolding is write-once; liveness fields (`last_activity`, `last_exchange`) refresh every call.
 
-The implementation is the `sk checkin` binary (`bin/sk`, symlinked to `~/.local/bin/sk` by `link.sh`). This skill is a thin orchestrator — Claude runs one bash invocation and lets the binary handle resolution, scaffolding, manifest RMW, JSONL extraction, and locking. See [ADR-0005](~/.stoobz/kb/adr/0005-skills-as-thin-orchestrators-of-versioned-scripts.md) for why.
+The implementation is the `sk checkin` binary (`bin/sk`, symlinked to `~/.local/bin/sk` by `link.sh`). This skill is a thin orchestrator — Claude runs one bash invocation and lets the binary handle resolution, scaffolding, manifest RMW, JSONL extraction, and locking. See ADR-0005 (Skills as thin orchestrators of versioned scripts) for why.
 
 ## Two Modes
 
@@ -167,7 +167,7 @@ Individual flags override `--inherit-chain-from`. The full authoritative referen
 
 ## See also
 
-- [ADR-0005](~/.stoobz/kb/adr/0005-skills-as-thin-orchestrators-of-versioned-scripts.md) — why this skill is a thin wrapper over a binary
-- [ADR-0004](~/.stoobz/kb/adr/0004-session-kit-artifact-durability.md) — the durable-first protocol the binary encodes
+- ADR-0005 (Skills as thin orchestrators of versioned scripts) — why this skill is a thin wrapper over a binary
+- ADR-0004 (Session Kit artifact durability) — the durable-first protocol the binary encodes
 - [write-artifact-protocol.md](../write-artifact-protocol.md) — the write contract artifact-emitting skills follow
 - `sk checkin --help` — full arg, exit-code, env, and JSON-schema reference straight from the binary
