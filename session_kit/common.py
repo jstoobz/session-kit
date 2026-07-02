@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import uuid
@@ -54,8 +55,12 @@ def session_kit_root() -> Path:
 
 
 def encode_path(path: Path) -> str:
-    """Mirror Claude Code's project-dir encoding: replace `/` with `-`."""
-    return str(path).replace("/", "-")
+    """Mirror Claude Code's project-dir encoding: every non-alphanumeric
+    character becomes `-`, not just slashes. `/Users/me/.stoobz/kb` encodes
+    as `-Users-me--stoobz-kb` — a slash-only replacement misses dot-dirs,
+    sending tier-1/2 session-id resolution to a nonexistent directory and
+    silently falling through to the tier-3 cache."""
+    return re.sub(r"[^a-zA-Z0-9]", "-", str(path))
 
 
 def projects_dir() -> Path:

@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+from session_kit.common import encode_path
+
 
 @pytest.fixture()
 def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -50,8 +52,7 @@ def mock_jsonl_session(fake_home: Path, project_cwd: Path):
     """
     def _make(cwd: Path | None = None, records: list[dict] | None = None) -> tuple[str, Path]:
         target_cwd = cwd or project_cwd
-        encoded = str(target_cwd).replace("/", "-")
-        proj_dir = fake_home / ".claude" / "projects" / encoded
+        proj_dir = fake_home / ".claude" / "projects" / encode_path(target_cwd)
         proj_dir.mkdir(parents=True, exist_ok=True)
         sid = str(uuid.uuid4()).lower()
         path = proj_dir / f"{sid}.jsonl"
