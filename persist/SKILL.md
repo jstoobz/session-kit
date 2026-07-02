@@ -1,8 +1,6 @@
 ---
 name: persist
 description: Save a specific artifact from the current conversation to $SESSION_KIT_ROOT/sessions/ (default ~/.stoobz/) for future discovery via /index. Use when the user says "/persist", "save this", "keep this", "persist this", "stash this for later", or wants to capture a reference artifact (table, runbook, research doc, architecture notes, comparison, plan) without ending the session. The in-flight companion to /park.
-
-triggers: ["/persist", "save this", "keep this", "persist this", "stash this for later"]
 ---
 
 # Persist
