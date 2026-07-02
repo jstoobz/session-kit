@@ -11,11 +11,7 @@ Selective synthesis across chain nodes. Turns a linear chain into a DAG — carr
 
 ## Check-In (precondition)
 
-Before the Process section runs, invoke `/checkin` in **silent mode** as a precondition. Export `INVOKING_SKILL=checkpoint` first so `/checkin` records this skill in the session's `skills_used` on its behalf. See [checkin/SKILL.md](../checkin/SKILL.md) for the protocol details (three-tier session-ID resolution, active-dir + ledger creation, scaffolding-idempotent re-entry with liveness refresh).
-
-If `/checkin` aborts (mkdir or ledger creation failure — the only durability conditions that fail loudly), this skill aborts too. Do not proceed to the Process section. Do not write any artifact.
-
-The canonical pattern: inline `/checkin`'s Reference Implementation at the top of this skill's single bash invocation (shell variables — `SESSION_ID`, `ACTIVE_DIR`, `LEDGER`, `NOW` — must stay in scope for any artifact write that follows). All shell work in this skill MUST run in one `Bash` tool invocation; see [checkin/SKILL.md § Execution Discipline](../checkin/SKILL.md#execution-discipline).
+The artifact writes below run through `sk write-artifact`, which invokes `sk checkin --silent --invoking checkpoint` in-process — no separate check-in step is needed. If a write exits `1` (durability failure, including the checkin precondition), abort: do not claim the checkpoint happened. See [checkin/SKILL.md](../checkin/SKILL.md) for the registration protocol.
 
 ## How It Fits
 
@@ -77,15 +73,15 @@ This is the core value — not concatenation but analysis-informed synthesis:
 5. **Open items merge:** Collect open items from all nodes. Check off any that were resolved in later nodes. Carry forward remaining.
 6. **File/path deduplication:** Consolidate key files referenced across nodes into one list.
 
-### 4. Write CHECKPOINT_CONTEXT.md (archive first)
+### 4. Write CHECKPOINT_CONTEXT.md
 
-**Archive first, always.** See [Archive-First Principle](#archive-first-principle) below. A checkpoint synthesis is effectively irreproducible — the same nodes would produce a similar but never identical synthesis because analytical judgment varies with context.
+Compose `$CHECKPOINT_BODY` in the format below, then write it through the substrate — one call performs the durable-first ordering (archive → verify → ledger append → cwd mirror; see [write-artifact-protocol.md](../write-artifact-protocol.md)). A checkpoint synthesis is effectively irreproducible — the same nodes would produce a similar but never identical synthesis — so the durable copy matters more than usual:
 
-**Write order:**
-1. `~/.stoobz/sessions/<project>/CHECKPOINT_CONTEXT-<chain_id>.md` (archive — durable)
-2. `./.stoobz/CHECKPOINT_CONTEXT.md` (local — session convenience)
+```bash
+sk write-artifact --skill checkpoint --artifact CHECKPOINT_CONTEXT.md --content-stdin <<< "$CHECKPOINT_BODY"
+```
 
-Both get identical content:
+The body format:
 
 ```markdown
 # Checkpoint Context
@@ -147,11 +143,13 @@ _Checkpoint synthesized {date} from chain "{chain_id}" nodes {list}._
 
 ### 5. Write relay baton (CONTEXT_FOR_NEXT_SESSION.md)
 
-Same archive-first pattern:
-1. `~/.stoobz/sessions/<project>/CONTEXT_FOR_NEXT_SESSION.md` (alongside CHECKPOINT_CONTEXT.md)
-2. `./.stoobz/CONTEXT_FOR_NEXT_SESSION.md` (local — the relay baton for `/pickup`)
+Use the standard relay format (from `/relay`), but sourced from the checkpoint synthesis instead of the current session, and include the extended chain metadata block below **in the body**. (Unlike `/park`, where `sk park-finalize` appends the block after the fact, `/checkpoint` writes it inline — it describes the *new branch chain*, and `/pickup`'s `--inherit-chain-from` parses the first block in the file, so the branch identity wins even after a later `/park` appends this session's own block.)
 
-Use the standard relay format (from `/relay`), but sourced from the checkpoint synthesis instead of the current session. Include an extended chain metadata block:
+```bash
+sk write-artifact --skill checkpoint --artifact CONTEXT_FOR_NEXT_SESSION.md --content-stdin <<< "$BATON_BODY"
+```
+
+The chain metadata block:
 
 ```markdown
 <!-- session-kit-chain
@@ -167,13 +165,11 @@ checkpoint_nodes: 1,2,4
 - Default: `{source-chain-id}-cp-{YYYY-MM-DD}` (e.g., `brrp-migration-cp-2026-03-01`)
 - With `--label`: use the label directly (e.g., `--label focused-fix` → chain_id = `focused-fix`)
 
-### 6. Update manifest
+### 6. Manifest — known substrate gap
 
-No new session entry — the check-in protocol already registered this session. Update the active entry to include:
-- `parent_chain_id`: the source chain
-- `checkpoint_nodes`: array of selected positions
+No new session entry — check-in already registered this session. The original design also stamped `parent_chain_id` / `checkpoint_nodes` onto the *current* session's active manifest entry, but the substrate has no write path for chain fields after first-checkin (`sk checkin`'s chain flags are first-checkin-only; `sk park-finalize` has no flags for them). **Do not hand-edit `manifest.json` to compensate** — leave the gap visible rather than faking a write path the system doesn't have.
 
-These flow through to the archived entry when `/park` runs.
+What still works without it: the branch metadata reaches the *next* session regardless — `/pickup` inherits `parent_chain_id` / `checkpoint_nodes` from the baton's chain block, so the branch and its fork annotation appear in `/index --chain` from the first picked-up node onward. The only loss is branch metadata on the checkpoint-*creating* session's own archived entry. Closing it properly is a scoped substrate follow-up (a chain-field update path on `sk`, e.g. flags on `park-finalize`).
 
 ### 7. Confirm
 
@@ -181,7 +177,7 @@ These flow through to the archived entry when `/park` runs.
 Checkpoint synthesized from chain "{chain_id}".
 
   Nodes:     1, 2, 4 (of 4 total, excluded: 3)
-  Archived:  ~/.stoobz/sessions/<project>/CHECKPOINT_CONTEXT-<chain_id>.md
+  Archived:  <active-archive>/CHECKPOINT_CONTEXT.md   (path printed by sk write-artifact)
   Local:     .stoobz/CHECKPOINT_CONTEXT.md
   Relay:     .stoobz/CONTEXT_FOR_NEXT_SESSION.md (ready for /pickup)
   New chain: {new-chain-id} (branched from {source-chain-id})
@@ -192,27 +188,32 @@ Checkpoint synthesized from chain "{chain_id}".
 
 "Archived" listed first intentionally — the archive is the durable copy, written first.
 
-## Archive-First Principle
-
-**Write to the archive before writing to the local `.stoobz/` directory.** This applies to every skill that writes artifacts to both locations.
-
-The archive (`~/.stoobz/sessions/`) is the durable, long-term store. The local `./.stoobz/` is the volatile working copy. If a crash happens between writes, the durable copy should be the one that survives.
-
-| Skill | Why archive-first matters |
-|-------|--------------------------|
-| `/checkpoint` | Synthesis is irreproducible — re-reading everything produces similar but never identical output |
-| `/persist` | Reference artifacts are immediate-write to archive (already follows this) |
-| `/park` | Currently writes local first then archives — should be reversed in a future pass |
-
-**The pattern:** `mkdir -p` the archive path, write the file there, then copy to `./.stoobz/`. If only one write succeeds, it should be the durable one.
-
 ## Rules
 
 - **Synthesize, don't concatenate** — The core value is analytical judgment: threading themes, resolving contradictions, pruning dead ends. Don't just paste artifacts together.
-- **Archive first** — Always write to `~/.stoobz/sessions/` before `./.stoobz/`. If only one write succeeds, it should be the durable one.
+- **Write through the substrate** — both artifacts go via `sk write-artifact` (durable-first ordering handled there; see [write-artifact-protocol.md](../write-artifact-protocol.md)). Never hand-write into the archive tree or hand-edit the manifest.
 - **Skip empty sections** — Don't include empty Tried and Ruled Out, Decisions, or Open Items sections.
 - **Respect RETRO/HANDOFF exclusion** — RETRO is process reflection, HANDOFF overlaps with TLDR. Neither carries operational context.
 - **Error early on bad input** — If chain doesn't exist or positions are invalid, say so immediately with actionable guidance.
 - **Preserve traceability** — The Source Artifacts table links every node to its archive. This is how someone traces a finding back to its origin.
 - **Don't overwrite existing checkpoints** — If `.stoobz/CHECKPOINT_CONTEXT.md` exists, preserve it under a `## Previous Checkpoint` heading (same pattern as other session-kit artifacts).
-- **Manifest is append-only** — Never remove entries, only add or update fields.
+- **Manifest is append-only** — Never remove entries; field updates happen only through `sk` subcommands.
+
+## Exit Codes
+
+`sk write-artifact` returns per-call:
+
+| Code | Meaning | Caller behavior |
+|------|---------|-----------------|
+| `0` | Durable write + mirror both succeeded | Continue |
+| `1` | Durability failure (archive, verify, ledger, or precondition checkin) | Abort; do not claim the checkpoint happened |
+| `2` | Durable write succeeded; cwd mirror failed | Mention the warning; archive is authoritative |
+| `3` | Usage error | Fix invocation |
+
+## See also
+
+- [relay/SKILL.md](../relay/SKILL.md) — the baton format this skill reuses
+- [pickup/SKILL.md](../pickup/SKILL.md) — how the baton's chain block is inherited next session
+- [checkin/SKILL.md](../checkin/SKILL.md), [write-artifact-protocol.md](../write-artifact-protocol.md)
+- `sk write-artifact --help`
+- ADR-0005 (Skills as thin orchestrators of versioned scripts)
