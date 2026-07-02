@@ -108,4 +108,3 @@ _Handoff generated {date} — reach out to {author} for questions._
 
 - [checkin/SKILL.md](../checkin/SKILL.md), [write-artifact-protocol.md](../write-artifact-protocol.md)
 - `sk write-artifact --help`
-- ADR-0005 (Skills as thin orchestrators of versioned scripts)

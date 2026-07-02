@@ -2,7 +2,7 @@
 
 Skill markdown holds the contract; this package holds the deterministic plumbing
 (session-id resolution, manifest read-modify-write, durable-first artifact
-writes). See ADR-0005 for the architectural rationale.
+writes).
 """
 
 __version__ = "0.1.0"

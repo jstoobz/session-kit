@@ -2,7 +2,7 @@
 
 A composable set of Claude Code skills for managing session lifecycle — from starting work, through the session, to parking it and sharing results.
 
-Skills in this kit are **thin orchestrators** over a single Python CLI (`sk`). SKILL.md owns the contract (what / when / why) and any Claude-judgment composition (drafting an artifact body, inferring a label); deterministic plumbing (session-id resolution, manifest read-modify-write, ledger append, durable-first write, chain inheritance, archive finalization, manifest queries) lives in the `sk` binary. See ADR-0005 (Skills as thin orchestrators of versioned scripts).
+Skills in this kit are **thin orchestrators** over a single Python CLI (`sk`). SKILL.md owns the contract (what / when / why) and any Claude-judgment composition (drafting an artifact body, inferring a label); deterministic plumbing (session-id resolution, manifest read-modify-write, ledger append, durable-first write, chain inheritance, archive finalization, manifest queries) lives in the `sk` binary.
 
 ## Architecture
 
@@ -116,7 +116,7 @@ All artifact-generating skills check for existing files in `./.stoobz/` before w
 | `/park` | Yes | Three calls for TLDR/RELAY/HONE, then `sk park-finalize` |
 | `/checkpoint` | Yes | Writes baton + CHECKPOINT_CONTEXT.md |
 
-See [write-artifact-protocol.md](write-artifact-protocol.md) and ADR-0004 (Session Kit artifact durability).
+See [write-artifact-protocol.md](write-artifact-protocol.md).
 
 ## Archive Convention
 

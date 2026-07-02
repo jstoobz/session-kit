@@ -216,4 +216,3 @@ Checkpoint synthesized from chain "{chain_id}".
 - [pickup/SKILL.md](../pickup/SKILL.md) — how the baton's chain block is inherited next session
 - [checkin/SKILL.md](../checkin/SKILL.md), [write-artifact-protocol.md](../write-artifact-protocol.md)
 - `sk write-artifact --help`
-- ADR-0005 (Skills as thin orchestrators of versioned scripts)

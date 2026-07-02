@@ -25,7 +25,7 @@ That's the entire skill body. The binary handles filtering, rendering, JSON outp
 |------------|--------|
 | `<filter>` | Positional substring (case-insensitive) matched against `tags`, `summary`, `label`, `project`, `branch`, `session_id`, `chain_id`, and the `last_exchange` text |
 | `--active` | Only sessions with `status: "active"` (renders an Active Sessions table; archived section suppressed) |
-| `--orphans` | Filesystem scan for `<sid>-active/` directories with no manifest entry (legacy / un-checked-in sessions) — read side of the WAL pattern from ADR-0004 |
+| `--orphans` | Filesystem scan for `<sid>-active/` directories with no manifest entry (legacy / un-checked-in sessions) — the read side of the write-ahead registration pattern |
 | `--chain` | Group sessions by `chain_id`, sorted by `chain_position`; shows fork annotations for `/checkpoint` branches |
 | `--since <when>` | Date filter: `today`, `week`, `month`, or `YYYY-MM-DD` |
 | `--deep <pattern>` | Grep through archived artifact text for `pattern` (case-insensitive) |
@@ -36,7 +36,7 @@ Filters combine: `sk index --active foo` shows only active sessions whose haysta
 
 ## Scope note: `--orphans`
 
-`--orphans` covers the **filesystem-without-manifest** direction only — `<sid>-active/` directories that were created by something other than `sk checkin` (legacy or hand-built fixtures). The inverse — manifest entries with `status: "active"` whose work has stalled — is a different concern (ADR-0007, abandoned-but-registered) and not handled here.
+`--orphans` covers the **filesystem-without-manifest** direction only — `<sid>-active/` directories that were created by something other than `sk checkin` (legacy or hand-built fixtures). The inverse — manifest entries with `status: "active"` whose work has stalled — is a different concern and not handled here.
 
 ## Examples
 
@@ -89,4 +89,3 @@ Active sessions render with `Since` / `Last Active` / `Branch` / `Last Exchange`
 
 - [checkin/SKILL.md](../checkin/SKILL.md) — the registration side of the WAL pattern
 - `sk index --help` — authoritative arg reference
-- ADR-0004 (Session Kit artifact durability), ADR-0005 (Skills as thin orchestrators of versioned scripts)

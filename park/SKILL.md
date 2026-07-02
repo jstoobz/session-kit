@@ -109,9 +109,7 @@ The three `sk write-artifact` calls follow their own exit-code table — see [wr
 
 When invoked as `/park --archive-system`, skip the Process above and run the retroactive cleanup flow for legacy scattered `.stoobz/` directories. This mode is **operator-driven, interactive, and rarely runs** — it has not been migrated to a `sk` subcommand and remains prose-driven here.
 
-See the dedicated reference doc (TODO Phase 2D): `park/archive-system.md`. Until that lands, the prose for `--archive-system` lives in commit `4234da7^` of this skill (pre-Phase-2C version) — pull it back from git history if/when the flow is needed.
-
-The supported flags (`--select` default, `--all`, `--dry-run`, `--clean`) and their semantics are unchanged from the pre-Phase-2C spec.
+This mode is **currently unimplemented** — its prose-driven flow was removed when the skill migrated onto the `sk` substrate and has not been restored. The flags (`--select` default, `--all`, `--dry-run`, `--clean`) are reserved with unchanged meanings; the removed flow is recoverable from this repo's git history if the mode is needed before it returns.
 
 ## Rules
 
@@ -129,5 +127,3 @@ The supported flags (`--select` default, `--all`, `--dry-run`, `--clean`) and th
 - [checkin/SKILL.md](../checkin/SKILL.md) — precondition each `sk write-artifact` triggers internally
 - [write-artifact-protocol.md](../write-artifact-protocol.md) — the durable-first contract
 - `sk park-finalize --help`, `sk write-artifact --help` — full arg / exit-code / JSON reference
-- ADR-0004 (Session Kit artifact durability) — why /park is finalization, not copy
-- ADR-0005 (Skills as thin orchestrators of versioned scripts) — why this skill is a thin wrapper

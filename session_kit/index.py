@@ -4,8 +4,8 @@ Read-side companion to `sk checkin` (the WAL-style registration write). The
 manifest entries that `sk checkin` registers as `status: "active"` show up here
 under `--active`; finalized entries show up by default. `--orphans` scans the
 filesystem for `<sid>-active/` directories that have no manifest entry — the
-bridge for legacy sessions that never registered (do not use this for sessions
-that registered but stalled; that's a separate concern, see ADR-0007).
+bridge for legacy sessions that never registered (registered-but-stalled
+entries are a different concern and not handled here).
 
 Supports:
   * default       — archived sessions, newest first (table)

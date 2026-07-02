@@ -2,8 +2,6 @@
 
 The canonical contract every artifact-writing session-kit skill follows. Read this once; individual SKILL.md files reference it instead of restating it.
 
-> **Why this exists.** See ADR-0004 (Session Kit artifact durability) — durable-first write-through with ledger replaces lazy-archive copy-at-`/park`.
-
 ---
 
 ## The Contract
@@ -123,11 +121,11 @@ Mismatched size is a warning, not a fatal — operator may have edited the artif
 
 Session-ID resolution **does not fail**. The three-tier chain (jsonl → git-root → cached/synthesized UUID; see [checkin/SKILL.md § Session ID Resolution](checkin/SKILL.md)) always produces a stable ID. Tier-3 synthesis caches the UUID in `cwd/.stoobz/.session-id` so the same scratch cwd resolves to the same session on subsequent invocations.
 
-This was a deliberate loosening from an earlier draft. The previous version refused to write any artifact when tiers 1+2 missed; that misidentified the durability promise. A tier-3 session in `/tmp` writes durably to `~/.stoobz/sessions/tmp/<uuid>-active/` just as reliably as a tier-1 session in a tracked git repo — the archive path is fully addressable from the resolved ID, regardless of which tier produced it. The hard gate belongs at the actual write step, not at ID resolution.
+A tier-3 session in `/tmp` writes durably to `~/.stoobz/sessions/tmp/<uuid>-active/` just as reliably as a tier-1 session in a tracked git repo — the archive path is fully addressable from the resolved ID, regardless of which tier produced it. The hard gate is at the actual write step, not at ID resolution.
 
 ### Active dir or ledger creation failure
 
-If `mkdir -p` of the active archive dir fails, OR if `.session-artifacts.json` creation fails, check-in MUST abort the calling skill. These are the **only** check-in conditions that abort. Without an active dir + ledger, no artifact can be written durably; cwd-only fallback is exactly the outcome ADR-0004 set out to eliminate.
+If `mkdir -p` of the active archive dir fails, OR if `.session-artifacts.json` creation fails, check-in MUST abort the calling skill. These are the **only** check-in conditions that abort. Without an active dir + ledger, no artifact can be written durably; a cwd-only fallback would silently break the durability contract.
 
 ### Mirror failure
 
@@ -145,18 +143,7 @@ Skill continues normally. `/park` will not re-attempt the mirror — it's a one-
 
 If a ledger entry's file is missing or size doesn't match, `/park` surfaces the discrepancy but proceeds. Missing-file is logged; size-mismatch records the actual size in the manifest. Operator decides whether to investigate.
 
-## What This Replaces
-
-| Old (lazy archive)                                | New (durable-first)                                  |
-|---------------------------------------------------|------------------------------------------------------|
-| Skill writes to `cwd/.stoobz/<artifact>.md`       | Skill writes to archive first, then mirrors to cwd   |
-| `/park` enumerates a hardcoded artifact allowlist | `/park` reads the ledger as authoritative            |
-| `/park` failure mid-copy = data loss              | `/park` failure = orphan dir in archive, recoverable |
-| Multi-session collision in `cwd/.stoobz/`         | Each session writes to its own `<session-id>-active/`|
-| Brain-dump files in `.stoobz/` ambiguous to park  | Park only touches ledger-listed files                |
-
 ## References
 
-- ADR-0004 (Session Kit artifact durability) — the *why*
 - [checkin/SKILL.md](checkin/SKILL.md) — active dir pre-allocation, session ID detection
 - [session-kit.md](session-kit.md) — overall kit architecture

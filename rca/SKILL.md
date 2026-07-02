@@ -88,4 +88,3 @@ The two markdown templates (SUMMARY + CONTEXT) live in [reference/formats.md](re
 - [reference/formats.md](reference/formats.md) — SUMMARY + CONTEXT format specs
 - [checkin/SKILL.md](../checkin/SKILL.md), [write-artifact-protocol.md](../write-artifact-protocol.md)
 - `sk write-artifact --help`
-- ADR-0005 (Skills as thin orchestrators of versioned scripts)
