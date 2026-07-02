@@ -18,7 +18,7 @@ session-kit/
 │   ├── park_finalize.py      # active → archived rename + manifest flip + chain block
 │   ├── index.py              # manifest queries + orphan scan + deep grep
 │   └── tests/                # pytest unit tests
-├── {skill}/SKILL.md          # 13 thin orchestrators
+├── {skill}/SKILL.md          # 14 skills: 13 sk-backed thin orchestrators + script-backed sweep
 ├── link.sh                   # symlinks skills into ~/.claude/skills/ + sk into ~/.local/bin/
 ├── session-kit.md            # this file
 ├── guide.md                  # workflow walkthrough
@@ -37,49 +37,10 @@ session-kit/
 
 ## Skills
 
-### Registration
-
-| Command | Purpose |
-|---------|---------|
-| `/checkin` | Register the current Claude Code session — creates the active manifest entry + pre-allocates `<sid>-active/` and the empty ledger. Every artifact-writing skill calls `sk checkin --silent` first. |
-
-### Core Artifacts
-
-| Command       | Output                                                              | Purpose                                                                                                                                                                        |
-| ------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `/tldr`       | `.stoobz/TLDR.md`                                                   | Concise session summary for sharing with engineers. Key findings, decisions, changes, open items. 2-minute read max.                                                           |
-| `/relay`      | `.stoobz/CONTEXT_FOR_NEXT_SESSION.md`                               | Everything Claude needs to resume in a new session. Paths, branch state, decisions, next steps.                                                                                |
-| `/checkpoint` | `.stoobz/CHECKPOINT_CONTEXT.md`, `.stoobz/CONTEXT_FOR_NEXT_SESSION.md` | Selective synthesis across chain nodes. Synthesizes a focused context and writes a relay baton that starts a new branch chain.                                              |
-| `/hone`       | `.stoobz/HONE.md`                                                   | Captures your original prompt verbatim, analyzes it, generates an optimized version, and provides coaching tips.                                                              |
-| `/retro`      | `.stoobz/RETRO.md`                                                  | Session retrospective — what went well, what took longer than expected, what to do differently.                                                                                |
-| `/handoff`    | `.stoobz/HANDOFF.md`                                                | Teammate-facing write-up with full business context, evidence, recommendations.                                                                                                |
-| `/rca`        | `.stoobz/INVESTIGATION_SUMMARY.md`, `.stoobz/INVESTIGATION_CONTEXT.md`, `.stoobz/evidence/` | Root cause analysis package — quick-scan + Claude-droppable deep context + raw evidence.                                              |
-
-### Project Setup
-
-| Command            | Output                                                       | Purpose                                                                                            |
-| ------------------ | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
-| `/prime`           | `.claude/skills/*/SKILL.md`, `.claude/commands/contexts/*.md` | Analyzes codebase, creates expert skills + feature/debug context files for all future sessions.    |
-| `/prime --refresh` | _(updates existing skills)_                                  | Checks staleness, re-analyzes changed layers, updates skills surgically.                            |
-
-### Lifecycle
-
-| Command                  | Output                                                            | Purpose                                                                                                                        |
-| ------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `/park`                  | TLDR + relay + HONE, archived                                     | End session: generate artifacts, `sk park-finalize` flips manifest to archived, relay baton stays in `./.stoobz/`.            |
-| `/park <label>`          | _(same as /park)_                                                  | Park with explicit label (e.g., `/park PROJ-1234`).                                                                            |
-| `/park --archive-system` | _(scans and archives)_                                             | Retroactive cleanup — finds scattered `.stoobz/` dirs and loose artifacts. Currently the pre-2C prose stub; see `park/SKILL.md`. |
-| `/persist <name> <tags>` | `<name>.md` in `./.stoobz/`                                       | Save a reference artifact mid-session. Tags merge-dedupe into the manifest entry's `tags[]` via `sk write-artifact --tags`.    |
-| `/pickup`                | _(reads existing artifacts)_                                       | Loads prior session context, presents a briefing, inherits chain metadata via `sk checkin --inherit-chain-from`.               |
-| `/index`                 | _(displayed)_                                                      | Archived sessions, newest first. `sk index` handles filter / chain / since / deep / json / orphans.                            |
-| `/index <filter>`        | _(displayed)_                                                      | Substring search across tags / summary / label / project / branch / session_id / chain_id / last_exchange.                     |
-| `/index --active`        | _(displayed)_                                                      | In-flight sessions with resume commands.                                                                                       |
-| `/index --orphans`       | _(displayed)_                                                      | Filesystem `<sid>-active/` dirs not in the manifest (legacy recovery).                                                         |
-| `/index --chain [term]`  | _(displayed)_                                                      | Group by chain, show fork annotations.                                                                                          |
-| `/index --since <when>`  | _(displayed)_                                                      | `today` / `week` / `month` / `YYYY-MM-DD`.                                                                                      |
-| `/index --deep <term>`   | _(displayed)_                                                      | Grep inside archived artifact bodies.                                                                                           |
-| `/checkpoint`            | `CHECKPOINT_CONTEXT.md`, `CONTEXT_FOR_NEXT_SESSION.md`             | Synthesize selected chain nodes into a focused starting point. Creates a branch chain.                                          |
-| `/sweep`                 | _(interactive)_                                                    | Cleanup of old Claude Code sessions from the resume picker.                                                                     |
+The skill catalog (registration, core artifacts, lifecycle, project setup, maintenance)
+lives in [README.md](README.md#skills) — kept current there and only there. Workflow-level
+composition patterns live in [guide.md](guide.md). This document stays on architecture:
+the substrate, the protocols, and the data model.
 
 ## Session Check-In (WAL-style registration)
 
@@ -135,62 +96,6 @@ Later                         Branch
   --deep: grep archived text
 ```
 
-## Composability Flows
-
-### New Repo Onboarding
-
-```
-First session:  /prime → creates expert skills + contexts
-Every session:  /pickup → [work with expert skills loaded] → /park
-Months later:   /prime --refresh → updates skills for architecture changes
-```
-
-### Solo Deep Dive
-
-```
-Session 1:  [do work] → /park
-Session 2:  /pickup → [continue] → /park
-Session 3:  /pickup → [wrap up] → /park + /retro
-```
-
-### Sharing with Team
-
-```
-[complete investigation] → /tldr      (quick share in Slack)
-                         → /handoff   (full context for PR review or pairing)
-                         → /rca       (investigation package — teammate + their Claude pick it up)
-```
-
-### Production Investigation
-
-```
-Session 1:  [investigate] → /rca       (package findings + evidence for teammate)
-                          → /park      (save your own session context too)
-Teammate:   [drop INVESTIGATION_CONTEXT.md path into Claude] → review → verify → fix
-```
-
-### Chain Branching (selective synthesis)
-
-```
-Session 1:  [investigate approach A] → /park
-Session 2:  /pickup → [investigate approach B, dead end] → /park
-Session 3:  /pickup → [investigate approach C] → /park
-Session 4:  /checkpoint 1,3 → synthesize sessions 1+3, skip the dead end
-New session: /pickup → start from clean checkpoint (approach A+C context only)
-```
-
-### Finding Past Work
-
-```
-/index                          → all sessions from manifest
-/index elixir                   → filter by tag
-/index memory leak              → filter by summary/label
-/index --active                 → in-flight sessions with resume commands
-/index --orphans                → recover legacy unregistered dirs
-/index --deep "rate limit"      → grep archived artifact text
-cd into source_dir → /pickup    → resume that work
-```
-
 ## File Existence Behavior
 
 All artifact-generating skills check for existing files in `./.stoobz/` before writing:
@@ -240,31 +145,3 @@ See [write-artifact-protocol.md](write-artifact-protocol.md) and ADR-0004 (Sessi
 - Sessions with `chain_id` form chains visible via `/index --chain`.
 - `<sid>-active/` dirs without a matching manifest entry are surfaced by `/index --orphans`.
 - **Archive dates are UTC**, not local time. A `/park` near midnight in a non-UTC timezone may produce a next-day-dated archive directory; grepping archives by date should account for the UTC boundary.
-
-## Quick Reference
-
-| I want to...                            | Use                                |
-| --------------------------------------- | ---------------------------------- |
-| Set up expert skills for a new repo     | `/prime`                           |
-| Update stale expert skills              | `/prime --refresh`                 |
-| Save everything before stepping away    | `/park`                            |
-| Park with a specific label              | `/park <label>`                    |
-| Resume where I left off                 | `/pickup`                          |
-| Share a quick summary                   | `/tldr`                            |
-| Write up findings for the team          | `/handoff`                         |
-| Save context for my next session        | `/relay`                           |
-| Improve my prompting                    | `/hone`                            |
-| Reflect on my process                   | `/retro`                           |
-| Package an investigation for a teammate | `/rca`                             |
-| Find a past session                     | `/index`                           |
-| Save a reference artifact mid-session   | `/persist`                         |
-| Persist with name and tags              | `/persist <name> <tag1> <tag2>...` |
-| Find sessions by topic                  | `/index <filter>`                  |
-| Search inside archived artifacts        | `/index --deep <term>`             |
-| Find active sessions                    | `/index --active`                  |
-| Recover unregistered active dirs        | `/index --orphans`                 |
-| Find recent work                        | `/index --since week`              |
-| View a work stream timeline             | `/index --chain <term>`            |
-| Synthesize selected sessions            | `/checkpoint`                      |
-| Checkpoint specific nodes               | `/checkpoint 1,2,4`                |
-| Resume a crashed session                | Copy `return_to` from `/index --active` |

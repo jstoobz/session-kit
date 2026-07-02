@@ -26,13 +26,13 @@ User-invoked `/checkin`:
 sk checkin --explicit
 ```
 
-Silent precondition from another skill (with `$INVOKING_SKILL` set by the caller's prose):
+Silent precondition from another skill:
 
 ```bash
-sk checkin --silent --invoking "$INVOKING_SKILL"
+sk checkin --silent --invoking <skill-name>
 ```
 
-For the canonical pattern callers use, see [tldr/SKILL.md](../tldr/SKILL.md) — it bundles its own write next to this invocation in a single bash block, but the bundling is the caller's discipline, not this skill's. From this skill's perspective, every call is one process.
+Most callers never issue this themselves: artifact-writing skills go through `sk write-artifact`, which runs the checkin precondition in-process with their name (see [tldr/SKILL.md](../tldr/SKILL.md)). Direct invocation is for skills that register without an up-front artifact write — `/pickup` (which adds `--inherit-chain-from`) and `/prime`. From this skill's perspective, every call is one process.
 
 ## Arguments
 
