@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -65,6 +66,55 @@ def _validate_rel_path(rel_path: str) -> Path:
         print("usage: --artifact must be non-empty", file=sys.stderr)
         raise typer.Exit(code=EXIT_USAGE)
     return p
+
+
+_LINT_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"ADR-\d+"), "private decision-record reference"),
+    (re.compile(r"MAP\.md"), "private index reference"),
+]
+
+_LINT_MAX_REPORTED = 10
+
+
+def _blocklist_prefixes() -> list[str]:
+    """Expand $PORTABLE_REFS_BLOCKLIST entries into literal, $HOME- and ~/-prefixed forms."""
+    raw = os.environ.get("PORTABLE_REFS_BLOCKLIST", "")
+    home = str(Path.home())
+    out: list[str] = []
+    seen: set[str] = set()
+    for entry in raw.split(":"):
+        entry = entry.strip()
+        if not entry:
+            continue
+        expanded = os.path.expanduser(entry)
+        forms = [entry, expanded]
+        if expanded.startswith(home):
+            forms.append("~" + expanded[len(home) :])
+        for f in forms:
+            if f not in seen:
+                seen.add(f)
+                out.append(f)
+    return out
+
+
+def lint_content(content: str) -> list[str]:
+    """Flag operator-private references in an artifact body (portable-references).
+
+    Warn-only by design: the artifact still lands, flagged — a relay written
+    deep into a long session is worth keeping even when it cites a private
+    identifier. Returns human-readable warning lines.
+    """
+    prefixes = _blocklist_prefixes()
+    warnings: list[str] = []
+    for line_no, line in enumerate(content.splitlines(), 1):
+        for pattern, label in _LINT_PATTERNS:
+            match = pattern.search(line)
+            if match:
+                warnings.append(f"line {line_no}: {match.group(0)} — {label}")
+        for prefix in prefixes:
+            if prefix in line:
+                warnings.append(f"line {line_no}: {prefix} — blocklisted path prefix")
+    return warnings
 
 
 def _parse_tags_csv(value: str | None) -> list[str]:
@@ -198,6 +248,20 @@ def run_write_artifact(
                 file=sys.stderr,
             )
 
+    # --- Step 3.6: content lint (warn-only; never blocks the write) ---
+    lint_warnings = lint_content(content)
+    if lint_warnings:
+        shown = lint_warnings[:_LINT_MAX_REPORTED]
+        hidden = len(lint_warnings) - len(shown)
+        lines = "\n".join(f"      {w}" for w in shown)
+        more = f"\n      … and {hidden} more" if hidden else ""
+        print(
+            f"lint: {entry['name']} carries operator-private references "
+            f"(portable-references):\n{lines}{more}\n"
+            f"      Artifact written unchanged; rephrase before it leaves this machine.",
+            file=sys.stderr,
+        )
+
     # --- Step 4: cwd mirror (best-effort) ---
     mirror_status = "skipped"
     mirror_path = cwd / ".stoobz" / rel
@@ -229,6 +293,7 @@ def run_write_artifact(
         "written_at": now,
         "ledger": str(ledger_path),
         "tags_added": list(tags or []),
+        "lint_warnings": lint_warnings,
     }
 
     if json_out:

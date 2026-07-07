@@ -360,3 +360,74 @@ def test_cli_tags_flag_omitted_no_tags_on_manifest(sk_root, fake_home, project_c
     )
     assert result.exit_code == EXIT_OK, result.stdout + result.stderr
     assert _manifest_entry(sk_root)["tags"] == []
+
+# --- Content lint (warn-only) ----------------------------------------------
+
+
+def test_lint_flags_adr_and_map_references(sk_root, fake_home, project_cwd, mock_jsonl_session, capsys):
+    mock_jsonl_session()
+    r = wa_mod.run_write_artifact(
+        cwd=project_cwd,
+        skill="relay",
+        rel_path="CONTEXT_FOR_NEXT_SESSION.md",
+        content="Per ADR-0008 the sidecar rule applies.\nSee MAP.md for edges.\n",
+        mirror=True,
+        json_out=False,
+    )
+    err = capsys.readouterr().err
+    assert "lint:" in err
+    assert "ADR-0008" in err
+    assert "MAP.md" in err
+    # warn-only: write still landed, both copies intact
+    assert Path(r["archive_path"]).exists()
+    assert r["mirror_status"] == "ok"
+    assert len(r["lint_warnings"]) == 2
+
+
+def test_lint_flags_blocklist_prefixes_in_all_forms(
+    sk_root, fake_home, project_cwd, mock_jsonl_session, capsys, monkeypatch
+):
+    monkeypatch.setenv("PORTABLE_REFS_BLOCKLIST", "~/.private-kb")
+    mock_jsonl_session()
+    home = str(Path.home())
+    content = (
+        f"literal ~/.private-kb/patterns/x.md\n"
+        f"expanded {home}/.private-kb/decisions/y.md\n"
+        "clean line\n"
+    )
+    r = wa_mod.run_write_artifact(
+        cwd=project_cwd,
+        skill="relay",
+        rel_path="CONTEXT_FOR_NEXT_SESSION.md",
+        content=content,
+        mirror=False,
+        json_out=False,
+    )
+    err = capsys.readouterr().err
+    assert "blocklisted path prefix" in err
+    assert len(r["lint_warnings"]) == 2
+
+
+def test_lint_silent_on_clean_content(sk_root, fake_home, project_cwd, mock_jsonl_session, capsys):
+    mock_jsonl_session()
+    r = wa_mod.run_write_artifact(
+        cwd=project_cwd,
+        skill="tldr",
+        rel_path="TLDR.md",
+        content="# Findings\nAll clean here.\n",
+        mirror=False,
+        json_out=False,
+    )
+    err = capsys.readouterr().err
+    assert "lint:" not in err
+    assert r["lint_warnings"] == []
+
+
+def test_lint_never_changes_exit_code(sk_root, fake_home, project_cwd, mock_jsonl_session):
+    mock_jsonl_session()
+    result = runner.invoke(
+        app,
+        ["write-artifact", "--skill", "relay", "--artifact", "R.md", "--content-stdin"],
+        input="mentions ADR-0001\n",
+    )
+    assert result.exit_code == EXIT_OK

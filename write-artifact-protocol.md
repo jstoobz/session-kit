@@ -107,6 +107,15 @@ The ledger is **append-only**, but artifacts themselves may be rewritten (e.g., 
 
 This trades ledger size for simplicity (no in-place edits, no reordering). For typical sessions the ledger stays well under 10KB.
 
+## Content Lint (warn-only)
+
+Every write scans the artifact body for references that resolve only on the author's
+machine: `ADR-<digits>`, `MAP.md`, and any path prefix listed in
+`$PORTABLE_REFS_BLOCKLIST` (matched in literal, `$HOME`-prefixed, and `~/`-prefixed
+forms). Hits print a `lint:` warning to stderr and are listed in the `--json` result's
+`lint_warnings[]` array. The artifact is written unchanged and the exit code is
+unaffected — the lint flags; the operator decides.
+
 ## Verification (used by `/park` and `/index --current-session`)
 
 For each ledger entry:
