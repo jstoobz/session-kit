@@ -22,7 +22,7 @@ cd session-kit
 
 This symlinks each skill into `~/.claude/skills/` and the `sk` dispatcher binary into `~/.local/bin/sk`. Restart Claude Code to pick up the new skills.
 
-The `sk` binary is the backing implementation for every migrated skill (`/checkin`, `/index`, `/park`, `/tldr`, `/relay`, `/hone`, `/retro`, `/handoff`, `/rca`, `/persist`). Each SKILL.md is a thin orchestrator that invokes a `sk <subcommand>`. Run `sk --help` for the full subcommand reference. `~/.local/bin` must be on your `PATH`.
+The `sk` binary backs `/checkin`, `/index`, `/park`, `/tldr`, `/relay`, `/hone`, `/retro`, `/handoff`, `/rca`, and `/persist`. Each SKILL.md is a thin orchestrator that invokes a `sk <subcommand>`. Run `sk --help` for the full subcommand reference. `~/.local/bin` must be on your `PATH`.
 
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/). The `bin/sk` shebang invokes `uv run` to manage its own dependencies (typer, filelock) — no system-wide install needed.
 
@@ -71,7 +71,7 @@ Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/). The `bin/sk` shebang
 | Command | Purpose |
 |---------|---------|
 | `/sweep` | Interactive cleanup of old Claude Code sessions from the resume picker |
-| `/park --archive-system` | Retroactive cleanup of scattered `.stoobz/` directories (pending re-migration; see `park/SKILL.md`) |
+| `/park --archive-system` | Retroactive cleanup of scattered `.stoobz/` directories (currently unimplemented — flags reserved; see `park/SKILL.md`) |
 
 ## Archive Structure
 

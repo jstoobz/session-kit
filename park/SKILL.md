@@ -107,9 +107,7 @@ The three `sk write-artifact` calls follow their own exit-code table — see [wr
 
 ## `--archive-system` — Retroactive Cleanup
 
-When invoked as `/park --archive-system`, skip the Process above and run the retroactive cleanup flow for legacy scattered `.stoobz/` directories. This mode is **operator-driven, interactive, and rarely runs** — it has not been migrated to a `sk` subcommand and remains prose-driven here.
-
-This mode is **currently unimplemented** — its prose-driven flow was removed when the skill migrated onto the `sk` substrate and has not been restored. The flags (`--select` default, `--all`, `--dry-run`, `--clean`) are reserved with unchanged meanings; the removed flow is recoverable from this repo's git history if the mode is needed before it returns.
+This mode is **currently unimplemented**. When invoked as `/park --archive-system`, skip the Process above and tell the operator: the flags (`--select` default, `--all`, `--dry-run`, `--clean`) are reserved with the documented meanings, but no cleanup flow runs. A prior interactive implementation is recoverable from this repo's git history if the mode is needed.
 
 ## Rules
 

@@ -122,7 +122,7 @@ If you have scattered `.stoobz/` directories from before you started using `/par
 /park --archive-system --all --clean  → archive + remove originals
 ```
 
-> `--archive-system` is pending re-migration onto the `sk` substrate — its flow prose was removed in the thin-orchestrator migration and hasn't been restored yet. Check `park/SKILL.md` for current status before relying on it.
+> `--archive-system` is currently unimplemented — the flags are reserved with the meanings shown, but no cleanup flow runs. Check `park/SKILL.md` for status before relying on it.
 
 ## End of Day
 
