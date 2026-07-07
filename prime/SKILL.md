@@ -94,19 +94,7 @@ Check for an existing `.claudeignore` in the repo root.
 
 **If `--refresh`:** re-run this check — new dependencies or tooling may have been added.
 
-Stack → patterns to ignore:
-
-| Stack | Patterns |
-|-------|----------|
-| Elixir/Phoenix | `deps/`, `_build/`, `priv/static/assets/`, `.elixir_ls/`, `*.beam` |
-| Node/React/Vue/Angular | `node_modules/`, `dist/`, `.next/`, `build/`, `.nuxt/`, `coverage/` |
-| Python | `__pycache__/`, `.venv/`, `venv/`, `*.pyc`, `.pytest_cache/`, `dist/`, `build/` |
-| Rust | `target/` |
-| Go | `vendor/` (only if directory exists) |
-| Ruby/Rails | `vendor/bundle/` |
-| .NET | `bin/`, `obj/`, `packages/` |
-| Java/Kotlin | `target/`, `build/`, `.gradle/` |
-| All stacks | `*.log`, `.DS_Store` |
+The stack → ignore-patterns table lives in [reference/stack-tables.md](reference/stack-tables.md#claudeignore-patterns-by-stack-phase-1d) — load it for this step.
 
 ## Phase 2: Deep Analysis
 
@@ -151,30 +139,7 @@ I'd also suggest these per-repo hooks for `.claude/settings.json`:
 Does this look right? Any adjustments to skills, contexts, or hooks?
 ```
 
-**Suggested hooks by stack** — include only hooks for linters/formatters that are present in the repo (check `mix.exs`, `package.json`, `pyproject.toml`, etc. for the tool before suggesting it):
-
-| Stack | Hook | Trigger | Command |
-|-------|------|---------|---------|
-| Elixir | Format enforcement | `PreToolUse: Bash(git commit *)` | `mix format` |
-| Elixir (if `credo` in deps) | Style check | `PreToolUse: Bash(git commit *)` | `mix credo --strict` |
-| Node/TS (if lint script exists) | Lint check | `PreToolUse: Bash(git commit *)` | `npm run lint` |
-| Node/TS (if `prettier` in devDeps) | Format check | `PreToolUse: Bash(git commit *)` | `npx prettier --check .` |
-| Python (if `ruff` present) | Lint check | `PreToolUse: Bash(git commit *)` | `ruff check .` |
-| Python (if `black` present) | Format check | `PreToolUse: Bash(git commit *)` | `black --check .` |
-| Rust | Format check | `PreToolUse: Bash(git commit *)` | `cargo fmt --check` |
-| Ruby (if `.rubocop.yml` exists) | Style check | `PreToolUse: Bash(git commit *)` | `rubocop` |
-
-If the user approves hooks: apply them via `/update-config`. Hook format for `settings.json`:
-```json
-"hooks": {
-  "PreToolUse": [{
-    "matcher": "Bash(git commit *)",
-    "hooks": [{ "type": "command", "command": "{command}" }]
-  }]
-}
-```
-
-If no hooks are relevant to the detected stack, omit the hooks section from the proposal entirely.
+**Suggested hooks by stack** — the lookup table (and the `settings.json` hook format used on approval, via `/update-config`) lives in [reference/stack-tables.md](reference/stack-tables.md#suggested-hooks-by-stack-phase-3). Include only hooks for linters/formatters that are present in the repo (check `mix.exs`, `package.json`, `pyproject.toml`, etc. for the tool before suggesting it). If no hooks are relevant to the detected stack, omit the hooks section from the proposal entirely.
 
 **Guidelines for proposing skills:**
 
@@ -188,75 +153,12 @@ If no hooks are relevant to the detected stack, omit the hooks section from the 
 
 ## Phase 4: Creation
 
-Write the skill files following progressive disclosure:
+Write the skill files following progressive disclosure. The three output templates
+(expert SKILL.md structure, feature context, debug context) live in
+[reference/templates.md](reference/templates.md) — load that file when creating them.
 
-### SKILL.md Structure (for each expert skill)
-
-```markdown
----
-name: {skill-name}
-description: {what it covers and when to use it}
----
-
-# {Skill Title}
-
-## Technology Stack
-{Key technologies with versions — correct common assumptions}
-
-## Architecture Overview
-{The "big picture" that requires reading multiple files to understand}
-{Non-obvious patterns, integration points, architectural decisions}
-
-## Key Patterns
-{How things are done in this codebase — with code examples}
-{Decision trees: "if you need to do X, look in Y"}
-
-## Domain Vocabulary
-{Business terms and their technical meaning}
-
-## Adding Features Checklist
-{Step-by-step for common tasks in this layer}
-
-## Key Gotchas
-{Traps for developers unfamiliar with the codebase}
-
-## Key Files
-{Map of important files and their purpose}
-
-## References
-{Links to references/ files for detailed patterns and examples}
-```
-
-### Context Files
-
-Feature context:
-```markdown
-Load the following expert contexts for {repo} feature development:
-
-/{skill-1} — {brief description}
-/{skill-2} — {brief description}
-
-Use these together when implementing features spanning {layers}.
-
-## Key Reminders
-{Critical gotchas and patterns to keep top of mind}
-```
-
-Debug context:
-```markdown
-Load the following expert contexts for {repo} debugging:
-
-/{skill-1} — {brief description}
-/{skill-2} — {brief description}
-
-## Investigation Approach
-{Symptom → cause → location mapping}
-{Key files for debugging table}
-```
-
-### Reference Files
-
-Move detailed code examples, integration patterns, and extensive configuration docs into `references/*.md`. Keep SKILL.md under 300 lines.
+Move detailed code examples, integration patterns, and extensive configuration docs into
+the generated skill's own `references/*.md`. Keep each generated SKILL.md under 300 lines.
 
 ## Phase 5: Placement
 

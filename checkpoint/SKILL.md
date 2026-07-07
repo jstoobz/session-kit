@@ -81,65 +81,9 @@ Compose `$CHECKPOINT_BODY` in the format below, then write it through the substr
 sk write-artifact --skill checkpoint --artifact CHECKPOINT_CONTEXT.md --content-stdin <<< "$CHECKPOINT_BODY"
 ```
 
-The body format:
-
-```markdown
-# Checkpoint Context
-
-**Date:** {YYYY-MM-DD}
-**Source chain:** {chain_id} (nodes {selected} of {total})
-**Pruned:** {excluded nodes with brief reason if inferable}
-
----
-
-## Synthesized Goal
-
-{The overarching goal across selected nodes — what we're trying to accomplish}
-
-## Key Findings (across {N} sessions)
-
-- {Consolidated finding — cite which node confirmed it}
-
-## Decisions Still In Effect
-
-| Decision | Made in | Rationale |
-|----------|---------|-----------|
-| {decision} | Node {N} | {why} |
-
-## Tried and Ruled Out
-
-{From excluded or superseded approaches — brief notes to prevent re-exploration}
-
-- {Approach}: {why it was abandoned} (Node {N})
-
-## Current State
-
-{Where things stand after the selected nodes — what's built, what's confirmed, what's in progress}
-
-## Key Files
-
-- `{path}` — {role, which node(s) referenced it}
-
-## Open Items
-
-- [ ] {Carried forward from nodes, de-duped}
-
-## Source Artifacts
-
-{For traceability — link each node to its archive}
-
-| Node | Date | Archive | Key Artifact |
-|------|------|---------|-------------|
-| 1 | {date} | {archive_path} | TLDR.md |
-| 2 | {date} | {archive_path} | CONTEXT_FOR_NEXT_SESSION.md |
-| 4 | {date} | {archive_path} | INVESTIGATION_SUMMARY.md |
-
----
-
-_Checkpoint synthesized {date} from chain "{chain_id}" nodes {list}._
-```
-
-**Skip empty sections.** If there are no decisions, no dead ends, no open items — omit those sections entirely.
+The body template lives in [reference/formats.md](reference/formats.md) — load it when
+composing `$CHECKPOINT_BODY`. Skip empty sections (no decisions, no dead ends, no open
+items → omit those sections entirely).
 
 ### 5. Write relay baton (CONTEXT_FOR_NEXT_SESSION.md)
 
@@ -212,6 +156,7 @@ Checkpoint synthesized from chain "{chain_id}".
 
 ## See also
 
+- [reference/formats.md](reference/formats.md) — the CHECKPOINT_CONTEXT.md body template
 - [relay/SKILL.md](../relay/SKILL.md) — the baton format this skill reuses
 - [pickup/SKILL.md](../pickup/SKILL.md) — how the baton's chain block is inherited next session
 - [checkin/SKILL.md](../checkin/SKILL.md), [write-artifact-protocol.md](../write-artifact-protocol.md)
