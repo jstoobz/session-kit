@@ -384,6 +384,21 @@ def test_lint_flags_adr_and_map_references(sk_root, fake_home, project_cwd, mock
     assert len(r["lint_warnings"]) == 2
 
 
+def test_lint_flags_new_index_name(sk_root, fake_home, project_cwd, mock_jsonl_session, capsys):
+    mock_jsonl_session()
+    r = wa_mod.run_write_artifact(
+        cwd=project_cwd,
+        skill="relay",
+        rel_path="CONTEXT_FOR_NEXT_SESSION.md",
+        content="Edges are recorded in operator/INDEX.md on the kb side.\n",
+        mirror=False,
+        json_out=False,
+    )
+    err = capsys.readouterr().err
+    assert "operator/INDEX.md" in err
+    assert len(r["lint_warnings"]) == 1
+
+
 def test_lint_flags_blocklist_prefixes_in_all_forms(
     sk_root, fake_home, project_cwd, mock_jsonl_session, capsys, monkeypatch
 ):
@@ -393,6 +408,7 @@ def test_lint_flags_blocklist_prefixes_in_all_forms(
     content = (
         f"literal ~/.private-kb/patterns/x.md\n"
         f"expanded {home}/.private-kb/decisions/y.md\n"
+        "dollar $HOME/.private-kb/conventions/z.md\n"
         "clean line\n"
     )
     r = wa_mod.run_write_artifact(
@@ -405,7 +421,7 @@ def test_lint_flags_blocklist_prefixes_in_all_forms(
     )
     err = capsys.readouterr().err
     assert "blocklisted path prefix" in err
-    assert len(r["lint_warnings"]) == 2
+    assert len(r["lint_warnings"]) == 3
 
 
 def test_lint_silent_on_clean_content(sk_root, fake_home, project_cwd, mock_jsonl_session, capsys):

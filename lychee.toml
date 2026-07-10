@@ -1,0 +1,8 @@
+# lychee — link checker config, kept deliberately minimal.
+#
+# The link guard is session_kit/tests/test_links.py: it runs
+# `lychee --offline` over the repo and fails on ANY nonzero exit —
+# including a config parse error — so an upgrade that rejects a key here
+# breaks the test loudly instead of disabling the guard silently.
+
+exclude_path = [".stoobz", ".claude", ".venv", ".pytest_cache"]

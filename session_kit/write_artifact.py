@@ -71,6 +71,7 @@ def _validate_rel_path(rel_path: str) -> Path:
 _LINT_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"ADR-\d+"), "private decision-record reference"),
     (re.compile(r"MAP\.md"), "private index reference"),
+    (re.compile(r"operator/INDEX\.md"), "private index reference"),
 ]
 
 _LINT_MAX_REPORTED = 10
@@ -89,7 +90,9 @@ def _blocklist_prefixes() -> list[str]:
         expanded = os.path.expanduser(entry)
         forms = [entry, expanded]
         if expanded.startswith(home):
-            forms.append("~" + expanded[len(home) :])
+            tail = expanded[len(home) :]
+            forms.append("~" + tail)
+            forms.append("$HOME" + tail)
         for f in forms:
             if f not in seen:
                 seen.add(f)
